@@ -109,9 +109,15 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
     }
     assert str(seven_zip_cli.resolve()).casefold() in expected_executables
 
-    container = AppContainer.create_production(
-        config_path=tmp_path / "jamefirewall-system-e2e.json"
+    baseline_dir = tmp_path / "baseline-empty"
+    baseline_dir.mkdir()
+    config_path = tmp_path / "jamefirewall-system-e2e.json"
+    config_path.write_text(
+        json.dumps({"directories": [str(baseline_dir)]}),
+        encoding="utf-8",
     )
+
+    container = AppContainer.create_production(config_path=config_path)
     container.unblock_use_case.execute()
 
     app: JameFirewallApp | None = None
@@ -136,12 +142,10 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         assert seven_zip_dir.resolve() in container.config_use_case.get_directories()
 
         app.block_button.invoke()
-        _pump_until(
-            app,
-            lambda: (
-                app.block_button.cget("state") == "normal" and C.MSG_SUCCESS_BLOCK in _log_text(app)
-            ),
-        )
+        _pump_until(app, lambda: app.block_button.cget("state") == "normal")
+
+        block_log = _log_text(app)
+        assert C.MSG_SUCCESS_BLOCK in block_log, block_log
 
         created_rules = _rules_for_programs(expected_executables)
         assert created_rules, "JameFirewall created no 7-Zip firewall rules"
@@ -159,15 +163,11 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         assert app.status_label.cget("text") == C.STATUS_PROTECTED
 
         app.unblock_button.invoke()
-        _pump_until(
-            app,
-            lambda: (
-                app.unblock_button.cget("state") == "normal"
-                and C.MSG_SUCCESS_UNBLOCK in _log_text(app)
-                and not _rules_for_programs(expected_executables)
-            ),
-        )
+        _pump_until(app, lambda: app.unblock_button.cget("state") == "normal")
 
+        unblock_log = _log_text(app)
+        assert C.MSG_SUCCESS_UNBLOCK in unblock_log, unblock_log
+        assert not _rules_for_programs(expected_executables)
         assert app.status_label.cget("text") == C.STATUS_UNPROTECTED
     finally:
         with contextlib.suppress(Exception):
