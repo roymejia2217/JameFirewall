@@ -24,6 +24,8 @@ Create one active branch ruleset targeting the default branch with no bypass act
 Required protections:
 
 - Require a pull request before merging.
+- Require review from Code Owners for paths covered by `.github/CODEOWNERS`.
+- Dismiss stale approvals when new commits affect governed paths.
 - Require status checks before merging.
 - Require branches to be up to date before merging.
 - Required check: `PR Governance`.
@@ -44,6 +46,12 @@ not the JameFirewall repository itself.
 
 That policy means public forks may inspect and fork the source, but only branches created by actors
 with push access to this repository are candidates for the automated merge path.
+
+Governance-critical paths are additionally covered by `.github/CODEOWNERS`. Changes to workflows,
+dependency policy, PyInstaller packaging, native Windows acceptance tests, or the governance
+contracts require approval from `@roymejia2217`. Ordinary product-code PRs do not acquire this
+manual-review requirement solely from CODEOWNERS and remain eligible for native auto-merge after
+their required checks pass.
 
 ## Required CI
 
