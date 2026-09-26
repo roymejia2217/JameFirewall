@@ -85,3 +85,17 @@ def test_failed_powershell_query_falls_back_to_netsh() -> None:
 
     assert rules == ["Photoshop jame-block"]
     assert runner_mock.run.call_count == 2
+
+
+def test_list_rules_uses_targeted_display_name_filter() -> None:
+    """The primary query must filter at the NetSecurity provider, not after global enumeration."""
+    runner_mock = MagicMock()
+    runner_mock.run.return_value = (0, "Photoshop jame-block", "")
+    adapter = WindowsNetshAdapter(runner=runner_mock)
+
+    adapter.list_rules_with_suffix("jame-block")
+
+    command = runner_mock.run.call_args[0][0]
+    assert command[:4] == ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+    assert "Get-NetFirewallRule -DisplayName '*jame-block*'" in command[4]
+    assert "Where-Object" not in command[4]
