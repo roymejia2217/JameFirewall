@@ -6,11 +6,11 @@ echo ">>> INICIANDO QUALITY GATE VERIFICATION: JAMEFIREWALL <<<"
 echo "=========================================================="
 
 echo "[1/5] Comprobando Formato y Linters con Ruff..."
-uv run ruff check src tests
-uv run ruff format --check src tests
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 
 echo "[2/5] Comprobando Tipado Estático Estricto con Mypy..."
-uv run mypy src tests
+uv run mypy src tests scripts
 
 echo "[3/5] Ejecutando Suite de Pruebas Multiplataforma con Pytest y Cobertura..."
 uv run pytest --cov=src/jame_firewall --cov-branch --cov-report=term-missing
