@@ -57,7 +57,7 @@ ignore = [
     "S603",   # Subprocess call without shell=True
     "S607",   # Start process with partial executable path
     "E501",   # Line length handled by formatter
-    "SIM112", # Environment variable capitalization (Windows env vars are mixed-case)
+    "SIM112", # Environment variable capitalization
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -81,6 +81,10 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = "jame_firewall.presentation.*"
+disallow_untyped_calls = false
 
 # --- PYTEST CONFIGURATION ---
 [tool.pytest.ini_options]

@@ -16,7 +16,9 @@ def test_block_executables_skips_already_blocked_and_blocks_new(
     fake_firewall: InMemoryFirewallAdapter, fake_uac: FakeUACAdapter
 ) -> None:
     # 1. Configurar regla previa
-    fake_firewall.add_rule("photoshop jame-block", Path("C:/Adobe/photoshop.exe"), RuleDirection.OUT)
+    fake_firewall.add_rule(
+        "photoshop jame-block", Path("C:/Adobe/photoshop.exe"), RuleDirection.OUT
+    )
     fake_firewall.add_rule("photoshop jame-block", Path("C:/Adobe/photoshop.exe"), RuleDirection.IN)
 
     scanner_mock = MagicMock()

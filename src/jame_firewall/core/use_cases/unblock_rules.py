@@ -27,7 +27,9 @@ class UnblockRulesUseCase:
     def execute(self) -> UnblockSummary:
         """Elimina todas las reglas asociadas a JameFirewall y sufijos anteriores."""
         if not self._uac.is_admin():
-            raise PrivilegesRequiredError("Se requieren privilegios de administrador para eliminar reglas.")
+            raise PrivilegesRequiredError(
+                "Se requieren privilegios de administrador para eliminar reglas."
+            )
 
         # Recolectar reglas de todos los sufijos auditados
         all_suffixes = [self._primary_suffix, *self._legacy_suffixes]

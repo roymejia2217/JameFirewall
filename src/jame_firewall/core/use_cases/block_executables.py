@@ -28,7 +28,9 @@ class BlockExecutablesUseCase:
     def execute(self, search_directories: list[Path]) -> BlockSummary:
         """Ejecuta el proceso completo de escaneo y bloqueo de binarios."""
         if not self._uac.is_admin():
-            raise PrivilegesRequiredError("Se requieren privilegios de administrador para crear reglas.")
+            raise PrivilegesRequiredError(
+                "Se requieren privilegios de administrador para crear reglas."
+            )
 
         # 1. Obtener reglas existentes para evitar duplicaciones
         existing_rules = self._firewall.list_rules_with_suffix(self._suffix)

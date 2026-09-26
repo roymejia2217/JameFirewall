@@ -14,6 +14,7 @@ class WindowsUACAdapter:
             return True
         try:
             import ctypes
+
             windll: Any = getattr(ctypes, "windll", None)
             if windll and hasattr(windll, "shell32"):
                 return bool(windll.shell32.IsUserAnAdmin() != 0)
@@ -27,6 +28,7 @@ class WindowsUACAdapter:
             return True
         try:
             import ctypes
+
             script_path = os.path.abspath(sys.argv[0])
             working_dir = os.path.dirname(script_path)
             args = " ".join([f'"{arg}"' for arg in sys.argv[1:]])

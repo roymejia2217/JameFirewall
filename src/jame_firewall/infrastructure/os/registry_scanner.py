@@ -15,6 +15,7 @@ class WindowsRegistryAdapter:
         # 1. Búsqueda en Registro de Windows (HKLM y HKCU)
         try:
             import winreg
+
             reg: Any = winreg
 
             registry_roots = [
@@ -40,7 +41,11 @@ class WindowsRegistryAdapter:
                                                 found_paths.add(Path(val).resolve())
                                             try:
                                                 val2, _ = reg.QueryValueEx(handle, "Path")
-                                                if val2 and isinstance(val2, str) and os.path.exists(val2):
+                                                if (
+                                                    val2
+                                                    and isinstance(val2, str)
+                                                    and os.path.exists(val2)
+                                                ):
                                                     found_paths.add(Path(val2).resolve())
                                             except OSError:
                                                 pass
