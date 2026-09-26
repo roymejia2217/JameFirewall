@@ -17,7 +17,6 @@ import pytest
 
 from jame_firewall.infrastructure.container import AppContainer
 from jame_firewall.presentation import constants as C
-from jame_firewall.presentation.windows import config_window as config_window_module
 from jame_firewall.presentation.windows.config_window import ConfigWindow
 from jame_firewall.presentation.windows.main_window import JameFirewallApp
 
@@ -121,8 +120,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         _pump_until(app, lambda: app.status_label.cget("text") != C.STATUS_LOADING)
 
         monkeypatch.setattr(
-            config_window_module.filedialog,
-            "askdirectory",
+            "jame_firewall.presentation.windows.config_window.filedialog.askdirectory",
             lambda **_: str(seven_zip_dir),
         )
 
