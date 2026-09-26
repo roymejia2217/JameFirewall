@@ -26,12 +26,15 @@ pytestmark = [
     pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows"),
 ]
 
+STARTUP_TIMEOUT_SECONDS = 60.0
+FIREWALL_OPERATION_TIMEOUT_SECONDS = 240.0
+
 
 def _pump_until(
     app: JameFirewallApp,
     predicate: Callable[[], bool],
     *,
-    timeout: float = 90.0,
+    timeout: float,
 ) -> None:
     """Pump the real Tk event loop until an asynchronous UI condition becomes true."""
     deadline = time.monotonic() + timeout
@@ -40,7 +43,13 @@ def _pump_until(
         if predicate():
             return
         time.sleep(0.05)
-    raise AssertionError("timed out waiting for JameFirewall UI state")
+    diagnostics = (
+        f"status={app.status_label.cget('text')!r}; "
+        f"block_state={app.block_button.cget('state')!r}; "
+        f"unblock_state={app.unblock_button.cget('state')!r}; "
+        f"log={_log_text(app)!r}"
+    )
+    raise AssertionError(f"timed out waiting for JameFirewall UI state; {diagnostics}")
 
 
 def _log_text(app: JameFirewallApp) -> str:
@@ -50,7 +59,7 @@ def _log_text(app: JameFirewallApp) -> str:
 def _firewall_rules() -> list[dict[str, str]]:
     """Read JameFirewall rules through the native Windows Firewall PowerShell API."""
     script = r"""
-$rules = Get-NetFirewallRule | Where-Object { $_.DisplayName -like '* jame-block' }
+$rules = Get-NetFirewallRule -DisplayName '* jame-block' -ErrorAction SilentlyContinue
 $items = foreach ($rule in $rules) {
     $filters = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $rule)
     foreach ($filter in $filters) {
@@ -119,11 +128,16 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
 
     container = AppContainer.create_production(config_path=config_path)
     container.unblock_use_case.execute()
+    assert not _rules_for_programs(expected_executables)
 
     app: JameFirewallApp | None = None
     try:
         app = JameFirewallApp(container)
-        _pump_until(app, lambda: app.status_label.cget("text") != C.STATUS_LOADING)
+        _pump_until(
+            app,
+            lambda: app.status_label.cget("text") != C.STATUS_LOADING,
+            timeout=STARTUP_TIMEOUT_SECONDS,
+        )
 
         monkeypatch.setattr(
             "jame_firewall.presentation.windows.config_window.filedialog.askdirectory",
@@ -142,9 +156,14 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         assert seven_zip_dir.resolve() in container.config_use_case.get_directories()
 
         app.block_button.invoke()
-        _pump_until(app, lambda: app.block_button.cget("state") == "normal")
+        _pump_until(
+            app,
+            lambda: app.block_button.cget("state") == "normal",
+            timeout=FIREWALL_OPERATION_TIMEOUT_SECONDS,
+        )
 
         block_log = _log_text(app)
+        assert "Error de bloqueo:" not in block_log, block_log
         assert C.MSG_SUCCESS_BLOCK in block_log, block_log
 
         created_rules = _rules_for_programs(expected_executables)
@@ -161,11 +180,17 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
             assert all(rule["Enabled"] == "True" for rule in rules), executable
 
         assert app.status_label.cget("text") == C.STATUS_PROTECTED
+        assert app.rule_count_label.cget("text") == f"Reglas: {len(expected_executables)}"
 
         app.unblock_button.invoke()
-        _pump_until(app, lambda: app.unblock_button.cget("state") == "normal")
+        _pump_until(
+            app,
+            lambda: app.unblock_button.cget("state") == "normal",
+            timeout=FIREWALL_OPERATION_TIMEOUT_SECONDS,
+        )
 
         unblock_log = _log_text(app)
+        assert "Error de desbloqueo:" not in unblock_log, unblock_log
         assert C.MSG_SUCCESS_UNBLOCK in unblock_log, unblock_log
         assert not _rules_for_programs(expected_executables)
         assert app.status_label.cget("text") == C.STATUS_UNPROTECTED
