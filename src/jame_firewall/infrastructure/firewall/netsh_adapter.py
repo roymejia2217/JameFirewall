@@ -52,13 +52,13 @@ class WindowsNetshAdapter:
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd]
         )
 
-        if code == 0 and stdout:
+        if code == 0:
             rules = {
                 line.strip() for line in stdout.splitlines() if line.strip() and suffix in line
             }
             return sorted(rules)
 
-        # 2. Fallback a netsh advfirewall
+        # 2. Fallback a netsh advfirewall únicamente si PowerShell falló
         code_ns, stdout_ns, _ = self._runner.run(
             ["netsh", "advfirewall", "firewall", "show", "rule", "name=all"]
         )
