@@ -22,6 +22,7 @@ Describe "JameFirewall packaged Windows runtime" {
         $script:isAdmin | Should -BeTrue
 
         $oldPath = $env:PATH
+        $startedAfter = Get-Date
         $env:PATH = @(
             "$env:SystemRoot\System32"
             "$env:SystemRoot"
@@ -29,32 +30,47 @@ Describe "JameFirewall packaged Windows runtime" {
             "$env:SystemRoot\System32\WindowsPowerShell\v1.0"
         ) -join ";"
 
-        $process = $null
         try {
-            $process = Start-Process -FilePath $script:runtimeExe -WorkingDirectory (Split-Path $script:runtimeExe) -PassThru
+            Start-Process -FilePath $script:runtimeExe -WorkingDirectory (Split-Path $script:runtimeExe) | Out-Null
 
+            $windowProcess = $null
             $deadline = (Get-Date).AddSeconds(30)
             do {
                 Start-Sleep -Milliseconds 250
-                $process.Refresh()
-            } while (
-                -not $process.HasExited -and
-                $process.MainWindowHandle -eq 0 -and
-                (Get-Date) -lt $deadline
-            )
+                $candidates = @(
+                    Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
+                        Where-Object {
+                            $_.StartTime -ge $startedAfter -and
+                            $_.Path -eq $script:runtimeExe
+                        }
+                )
+                $windowProcess = $candidates |
+                    Where-Object { $_.MainWindowHandle -ne 0 } |
+                    Select-Object -First 1
+            } while ($null -eq $windowProcess -and (Get-Date) -lt $deadline)
 
-            $process.HasExited | Should -BeFalse
-            $process.MainWindowHandle | Should -Not -Be 0
-            $process.MainWindowTitle | Should -Be "JameFirewall"
+            $windowProcess | Should -Not -BeNullOrEmpty
+            $windowProcess.MainWindowHandle | Should -Not -Be 0
+            $windowProcess.MainWindowTitle | Should -Be "JameFirewall"
 
             $crashLog = Join-Path (Split-Path $script:runtimeExe) "crash_log.txt"
             Test-Path $crashLog | Should -BeFalse
         }
         finally {
             $env:PATH = $oldPath
-            if ($null -ne $process -and -not $process.HasExited) {
-                Stop-Process -Id $process.Id -Force
-            }
+            Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.StartTime -ge $startedAfter -and
+                    $_.Path -eq $script:runtimeExe
+                } |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+
+            Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.StartTime -ge $startedAfter -and
+                    $_.Path -eq $script:runtimeExe
+                } |
+                Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
         }
     }
 }
