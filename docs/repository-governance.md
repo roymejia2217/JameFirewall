@@ -68,9 +68,9 @@ A successful package build by itself is never sufficient evidence for merge.
 
 ## Visibility transition
 
-Repository visibility must be changed before configuring the public-repository ruleset. GitHub
-disables push rulesets when a repository changes from private to public, so protections are applied
-after the visibility transition and verified before any pull request is merged.
+Repository visibility must be changed before applying the intended GitHub Free public-repository
+ruleset profile. Apply and verify the protections immediately after the visibility transition and
+before any subsequent unprotected merge.
 
 Making the repository public exposes source history, Actions history, and Actions logs. The
 repository remains proprietary unless its license is changed separately; public visibility does not
