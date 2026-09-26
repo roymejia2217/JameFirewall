@@ -58,3 +58,30 @@ def test_netsh_adapter_list_rules_with_suffix() -> None:
     assert len(rules) == 2
     assert "Photoshop jame-block" in rules
     assert "Illustrator jame-block" in rules
+
+
+def test_empty_successful_powershell_result_does_not_fallback() -> None:
+    """An empty successful PowerShell query is an authoritative empty rule set."""
+    runner_mock = MagicMock()
+    runner_mock.run.return_value = (0, "", "")
+    adapter = WindowsNetshAdapter(runner=runner_mock)
+
+    rules = adapter.list_rules_with_suffix("jame-block")
+
+    assert rules == []
+    runner_mock.run.assert_called_once()
+
+
+def test_failed_powershell_query_falls_back_to_netsh() -> None:
+    """netsh remains available only when the primary PowerShell query fails."""
+    runner_mock = MagicMock()
+    runner_mock.run.side_effect = [
+        (1, "", "PowerShell failure"),
+        (0, "Rule Name: Photoshop jame-block\n", ""),
+    ]
+    adapter = WindowsNetshAdapter(runner=runner_mock)
+
+    rules = adapter.list_rules_with_suffix("jame-block")
+
+    assert rules == ["Photoshop jame-block"]
+    assert runner_mock.run.call_count == 2
