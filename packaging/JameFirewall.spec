@@ -1,21 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
+
+datas_tb, binaries_tb, hidden_tb = collect_all('ttkbootstrap')
 
 a = Analysis(
     ['../src/jame_firewall/__main__.py'],
     pathex=['../src'],
-    binaries=[],
+    binaries=binaries_tb,
     datas=[
         ('../res/icon/128.ico', 'res/icon'),
         ('../res/icon/32.ico', 'res/icon'),
-    ],
+    ] + datas_tb,
     hiddenimports=[
         'ttkbootstrap',
         'PIL.ImageTk',
         'tkinter',
         'winreg',
-    ],
+    ] + hidden_tb,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -25,9 +28,6 @@ a = Analysis(
         'unittest',
         'doctest',
         'pydoc',
-        'email',
-        'http',
-        'xmlrpc',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
