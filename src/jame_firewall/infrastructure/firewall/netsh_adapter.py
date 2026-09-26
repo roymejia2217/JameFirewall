@@ -45,7 +45,7 @@ class WindowsNetshAdapter:
         """Consulta reglas activas que contengan el sufijo indicado."""
         # 1. Intentar consulta optimizada mediante PowerShell
         ps_cmd = (
-            f"Get-NetFirewallRule | Where-Object {{$_.DisplayName -like '*{suffix}*'}} "
+            f"Get-NetFirewallRule -DisplayName '*{suffix}*' -ErrorAction SilentlyContinue "
             "| Select-Object -ExpandProperty DisplayName"
         )
         code, stdout, _ = self._runner.run(
