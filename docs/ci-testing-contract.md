@@ -1,61 +1,73 @@
 # JameFirewall CI testing contract
 
-JameFirewall uses layered, tool-backed verification. No single custom script is treated as proof
-that a Windows desktop release works.
+JameFirewall uses layered, tool-backed verification. No custom script or successful build is
+accepted by itself as proof that the Windows desktop application works.
 
 ## Authoritative tooling
 
-- **pytest**: Python unit, contract, integration, native-Windows, and host-level system tests.
-- **PyInstaller**: produces the same one-file Windows executable delivered to users.
-- **Pester**: validates the packaged executable as a black-box Windows process.
-- **Windows Defender Firewall tooling**: native tests exercise the real `netsh`,
-  `Get-NetFirewallRule`, and `Get-NetFirewallApplicationFilter` surfaces.
-- **Chocolatey**: installs the pinned `7zip.install` system fixture on the GitHub-hosted Windows runner.
-- **GitHub Actions**: executes Linux and Windows lanes independently and joins them through one
-  required aggregate job.
+- **pytest** executes Python unit, contract, native-Windows, and system-acceptance tests.
+- **Actionlint 1.7.12** validates GitHub Actions workflow semantics from its official repository,
+  pinned to immutable commit `914e7df21a07ef503a81201c76d2b11c789d3fca`.
+- **PyInstaller** produces the same one-file Windows executable delivered to users.
+- **Pester 5.7.1** validates the packaged executable as a black-box Windows process.
+- **Chocolatey + 7-Zip 26.3.0** provides a pinned real installed Windows application fixture.
+- **Windows NetSecurity / Windows Defender Firewall** provides the native firewall state inspected
+  by the system acceptance lane.
+- **GitHub Actions** executes independent Linux, Windows-system, and Windows-package lanes and
+  combines them through the stable `Required CI` check.
 
-The CI workflow pins third-party GitHub Actions to immutable commit SHAs and uses
-`uv sync --frozen` for the Python environment.
+Third-party GitHub Actions are pinned to immutable commit SHAs. The uv executable is also pinned
+explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at runtime.
 
-## Verification layers
+## Pull-request acceptance layers
 
-1. Linux quality verifies Ruff, formatting, mypy strict mode, and the portable pytest suite.
-2. Windows native pytest builds the real Tk widget tree and invokes its command bindings.
-3. Windows firewall integration performs a real create/audit/delete rule round trip using an
-   isolated rule suffix and mandatory cleanup.
-4. The Windows system E2E installs pinned `7zip.install` 26.3.0, opens JameFirewall settings, adds
-   `C:\Program Files\7-Zip` through the real Tk button path, saves the configuration, invokes
-   the real activation control, and verifies that every discovered 7-Zip executable receives
-   enabled inbound and outbound `Block` rules in Windows Defender Firewall.
-5. The same E2E invokes the real deactivation control and fails unless those rules are removed.
-6. PyInstaller builds the production executable on the native Windows runner.
-7. Pester copies that executable outside the repository, removes project Python from `PATH`,
+1. **Linux Quality** validates the PR description contract, every PR commit message, Actionlint,
+   Ruff, Ruff formatting, mypy strict mode, and the portable pytest suite.
+2. **Windows System Acceptance** runs on the explicit `windows-2025` hosted image. It first builds
+   the real Tk/ttk widget tree and invokes the primary application control bindings.
+3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
+   installed product version, opens JameFirewall Settings, adds that directory through the real
+   Add control, and saves through the real Save control.
+4. It invokes the real Activate control and requires every executable discovered from the 7-Zip
+   directory to have enabled Windows Defender Firewall **Inbound** and **Outbound** rules with
+   action **Block**.
+5. It then invokes the real Deactivate control and requires those rules to disappear.
+6. **Windows Packaged Runtime** independently builds `dist/JameFirewall.exe` with PyInstaller.
+   This job does not depend on the 7-Zip lane, so a system-test failure cannot hide packaging
+   evidence and a packaging failure cannot hide system behavior evidence.
+7. Pester copies the executable outside the repository, removes project Python from `PATH`,
    launches it, requires a real `JameFirewall` top-level window, and rejects startup crash logs.
-8. The aggregate `Required CI` job fails unless both Linux and Windows lanes succeed.
-
-## System fixture policy
-
-`7zip.install` is used because it is small, deterministic, has executable files under the standard
-`Program Files` hierarchy, and does not require proprietary application licensing. CI installs
-version 26.3.0 explicitly rather than depending on whichever 7-Zip version happens to be baked
-into the runner image.
-
-The test does not assert only that a command returned zero. It reads the actual Windows Firewall
-state and validates program path, direction, action, and enabled state for the rules produced by
-JameFirewall.
+8. **Required CI** is fail-closed and succeeds only if Linux Quality, Windows System Acceptance,
+   and Windows Packaged Runtime all succeed.
 
 ## UI automation boundary
 
-Tk/ttk does not expose its widget tree through Microsoft UI Automation in the same way as WPF,
-WinForms, WinUI, or Qt. A UIA driver is therefore not accepted as proof of semantic button
-accessibility for this application.
+Tk/ttk does not expose its widget tree through Microsoft UI Automation with the semantic coverage
+available from WPF, WinForms, WinUI, or Qt. JameFirewall therefore does not treat a UIA driver or
+coordinate/image automation as authoritative evidence for its Tk controls.
 
-The Windows system E2E drives the real Tk widgets inside the application process and replaces only
-the operating-system directory picker response with the deterministic 7-Zip path. The directory
-picker itself is outside JameFirewall's business boundary. All configuration persistence,
-activation/deactivation callbacks, asynchronous dispatch, directory scanning, firewall adapters,
-and Windows Firewall state remain real.
+The system E2E executes the actual Tk controls in-process on native Windows while retaining the
+production dependency graph: filesystem scanner, persistence adapter, UAC adapter, firewall
+adapter, and Windows Defender Firewall. Only the native directory-picker response is substituted so
+CI can deterministically select the pinned 7-Zip installation directory.
 
-The packaged executable is independently validated as a black box by Pester. If the presentation
-layer later migrates to a UIA-accessible toolkit, a semantic UIA end-to-end lane should be added
-instead of coordinate- or image-based automation.
+The packaged executable is validated separately as a black box with Pester. There is no
+`--smoke-test` production bypass and no alternate test-only startup path in the released program.
+
+## Timing and diagnostics
+
+Windows Firewall mutation is real OS integration work. The system E2E therefore waits for bounded
+observable UI completion rather than assuming an arbitrary short fixed delay. Completion predicates
+normalize Tcl/ttk values before comparison. A timeout remains fail-closed and reports the current
+application status, button states, and activity log; it is never converted to a skip or success.
+
+## Release boundary
+
+The release workflow repeats the quality and Windows acceptance boundary before Release Please may
+create a release. The Windows release preflight produces one candidate executable, validates it with
+the 7-Zip system E2E and Pester, records its SHA-256, and uploads it as an Actions artifact.
+
+The publication job downloads that exact candidate, recomputes and compares its SHA-256, and
+publishes it without rebuilding. Release asset upload does not use `--clobber`; an existing
+conflicting asset is a failure rather than an implicit overwrite. Manual workflow-dispatch
+publication is not an authorized release path.
