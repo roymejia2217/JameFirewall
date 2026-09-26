@@ -10,12 +10,12 @@ import pytest
 if "winreg" not in sys.modules:
     mock_winreg = types.ModuleType("winreg")
     mock_winreg.HKEY_LOCAL_MACHINE = 0x80000002  # type: ignore[attr-defined]
-    mock_winreg.HKEY_CURRENT_USER = 0x80000001   # type: ignore[attr-defined]
-    mock_winreg.KEY_READ = 0x20019               # type: ignore[attr-defined]
-    mock_winreg.OpenKey = MagicMock()            # type: ignore[attr-defined]
+    mock_winreg.HKEY_CURRENT_USER = 0x80000001  # type: ignore[attr-defined]
+    mock_winreg.KEY_READ = 0x20019  # type: ignore[attr-defined]
+    mock_winreg.OpenKey = MagicMock()  # type: ignore[attr-defined]
     mock_winreg.QueryInfoKey = MagicMock(return_value=(0, 0, 0))  # type: ignore[attr-defined]
-    mock_winreg.EnumKey = MagicMock()            # type: ignore[attr-defined]
-    mock_winreg.QueryValueEx = MagicMock(return_value=("", 1))    # type: ignore[attr-defined]
+    mock_winreg.EnumKey = MagicMock()  # type: ignore[attr-defined]
+    mock_winreg.QueryValueEx = MagicMock(return_value=("", 1))  # type: ignore[attr-defined]
     sys.modules["winreg"] = mock_winreg
 
 from tests.fakes.fake_config import MemoryConfigAdapter

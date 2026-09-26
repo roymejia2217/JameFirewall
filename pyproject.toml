@@ -57,6 +57,7 @@ ignore = [
     "S603",   # Subprocess call without shell=True
     "S607",   # Start process with partial executable path
     "E501",   # Line length handled by formatter
+    "SIM112", # Environment variable capitalization (Windows env vars are mixed-case)
 ]
 
 [tool.ruff.lint.per-file-ignores]
