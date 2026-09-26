@@ -10,8 +10,7 @@ a = Analysis(
     pathex=['../src'],
     binaries=binaries_tb,
     datas=[
-        ('../res/icon/128.ico', 'res/icon'),
-        ('../res/icon/32.ico', 'res/icon'),
+        ('../res/icon/jamefirewall.ico', 'res/icon'),
     ] + datas_tb,
     hiddenimports=[
         'ttkbootstrap',
@@ -58,5 +57,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['../res/icon/128.ico'],
+    icon=['../res/icon/jamefirewall.ico'],
 )
