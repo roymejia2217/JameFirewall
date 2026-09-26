@@ -4,14 +4,28 @@ import contextlib
 import queue
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Protocol
+
+
+class TkSchedulerPort(Protocol):
+    """Contrato mínimo requerido del event loop de Tk."""
+
+    def after(self, delay_ms: int, callback: Callable[[], None]) -> Any:
+        """Programa un callback en el hilo del event loop."""
+        ...
 
 
 class QueueDispatcher:
     """Orquestador thread-safe entre hilos de trabajo y el bucle principal de Tkinter."""
 
-    def __init__(self, root_tk: Any, max_workers: int = 2) -> None:
+    def __init__(
+        self,
+        root_tk: TkSchedulerPort,
+        log_sink: Callable[[str, str], None] | None = None,
+        max_workers: int = 2,
+    ) -> None:
         self._root = root_tk
+        self._log_sink = log_sink
         self._ui_queue: queue.Queue[Callable[[], None]] = queue.Queue()
         self._log_queue: queue.Queue[dict[str, str]] = queue.Queue()
         self._executor = ThreadPoolExecutor(
@@ -35,9 +49,10 @@ class QueueDispatcher:
         self._log_queue.put({"message": message, "level": level})
 
     def _schedule_poll(self) -> None:
-        if self._is_running and hasattr(self._root, "after"):
-            self.drain_queues()
-            self._root.after(100, self._schedule_poll)
+        if not self._is_running:
+            return
+        self.drain_queues()
+        self._root.after(100, self._schedule_poll)
 
     def drain_queues(self) -> None:
         """Drena y procesa todos los mensajes pendientes en las colas."""
@@ -49,8 +64,8 @@ class QueueDispatcher:
         while not self._log_queue.empty():
             with contextlib.suppress(queue.Empty, Exception):
                 log_entry = self._log_queue.get_nowait()
-                if hasattr(self._root, "append_log"):
-                    self._root.append_log(log_entry["message"], log_entry["level"])
+                if self._log_sink is not None:
+                    self._log_sink(log_entry["message"], log_entry["level"])
 
     def shutdown(self) -> None:
         """Detiene el despachador y apaga el pool de hilos."""
