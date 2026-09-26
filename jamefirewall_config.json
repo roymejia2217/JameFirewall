@@ -1,0 +1,13 @@
+{
+    "directories": [
+        "%ProgramFiles%\\Adobe",
+        "%ProgramFiles%\\Common Files\\Adobe",
+        "%ProgramFiles(x86)%\\Adobe",
+        "%ProgramFiles(x86)%\\Common Files\\Adobe",
+        "%ProgramFiles%\\Maxon Cinema 4D R25",
+        "%ProgramFiles%\\Red Giant",
+        "%LOCALAPPDATA%\\Adobe",
+        "%ProgramData%\\Adobe",
+        "%APPDATA%\\Adobe"
+    ]
+}

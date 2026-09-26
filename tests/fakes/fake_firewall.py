@@ -11,10 +11,12 @@ class InMemoryFirewallAdapter:
     def __init__(self) -> None:
         # Clave: (rule_name, direction)
         self.rules: dict[tuple[str, str], FirewallRule] = {}
-        self.should_fail: bool = False
+        self.add_should_fail: bool = False
+        self.delete_should_fail: bool = False
+        self.list_should_fail: bool = False
 
     def add_rule(self, rule_name: str, program_path: Path, direction: RuleDirection) -> bool:
-        if self.should_fail:
+        if self.add_should_fail:
             return False
         key = (rule_name, direction.value)
         self.rules[key] = FirewallRule(
@@ -26,9 +28,8 @@ class InMemoryFirewallAdapter:
         return True
 
     def delete_rule(self, rule_name: str) -> bool:
-        if self.should_fail:
+        if self.delete_should_fail:
             return False
-        # Elimina todas las direcciones con ese rule_name
         keys_to_delete = [k for k in self.rules if k[0] == rule_name]
         if not keys_to_delete:
             return False
@@ -37,7 +38,7 @@ class InMemoryFirewallAdapter:
         return True
 
     def list_rules_with_suffix(self, suffix: str) -> list[str]:
-        if self.should_fail:
+        if self.list_should_fail:
             return []
         matching_names: set[str] = set()
         for rule_name, _ in self.rules:

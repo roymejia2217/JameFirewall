@@ -21,6 +21,8 @@ def test_block_executables_skips_already_blocked_and_blocks_new(
     )
     fake_firewall.add_rule("photoshop jame-block", Path("C:/Adobe/photoshop.exe"), RuleDirection.IN)
 
+    progress_events: list[tuple[str, str]] = []
+
     scanner_mock = MagicMock()
     scanner_mock.find_executables.return_value = [
         Path("C:/Adobe/photoshop.exe"),
@@ -32,6 +34,7 @@ def test_block_executables_skips_already_blocked_and_blocks_new(
         scanner=scanner_mock,
         uac=fake_uac,
         primary_suffix="jame-block",
+        on_progress=lambda msg, lvl: progress_events.append((msg, lvl)),
     )
 
     summary = use_case.execute([Path("C:/Adobe")])
@@ -40,6 +43,41 @@ def test_block_executables_skips_already_blocked_and_blocks_new(
     assert summary.skipped_count == 1
     assert summary.failed_count == 0
     assert fake_firewall.has_rule("illustrator jame-block")
+    assert any("+ illustrator" in msg for msg, _ in progress_events)
+
+
+def test_block_executables_handles_addition_failure(
+    fake_firewall: InMemoryFirewallAdapter, fake_uac: FakeUACAdapter
+) -> None:
+    fake_firewall.add_should_fail = True
+    scanner_mock = MagicMock()
+    scanner_mock.find_executables.return_value = [Path("C:/Adobe/illustrator.exe")]
+
+    use_case = BlockExecutablesUseCase(
+        firewall=fake_firewall,
+        scanner=scanner_mock,
+        uac=fake_uac,
+    )
+
+    summary = use_case.execute([Path("C:/Adobe")])
+    assert summary.failed_count == 1
+    assert len(summary.errors) == 1
+
+
+def test_block_executables_empty_list(
+    fake_firewall: InMemoryFirewallAdapter, fake_uac: FakeUACAdapter
+) -> None:
+    scanner_mock = MagicMock()
+    scanner_mock.find_executables.return_value = []
+
+    use_case = BlockExecutablesUseCase(
+        firewall=fake_firewall,
+        scanner=scanner_mock,
+        uac=fake_uac,
+    )
+
+    summary = use_case.execute([Path("C:/Adobe")])
+    assert summary.blocked_count == 0
 
 
 def test_block_executables_requires_admin(
