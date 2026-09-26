@@ -84,19 +84,11 @@ if ($items) {
 
 
 def _rules_for_programs(programs: set[str]) -> list[dict[str, str]]:
-    return [
-        rule
-        for rule in _firewall_rules()
-        if rule.get("Program", "").casefold() in programs
-    ]
+    return [rule for rule in _firewall_rules() if rule.get("Program", "").casefold() in programs]
 
 
 def _find_config_dialog(app: JameFirewallApp) -> ConfigWindow:
-    dialogs = [
-        child
-        for child in app.root.winfo_children()
-        if isinstance(child, ConfigWindow)
-    ]
+    dialogs = [child for child in app.root.winfo_children() if isinstance(child, ConfigWindow)]
     assert len(dialogs) == 1
     return dialogs[0]
 
@@ -114,9 +106,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
     assert seven_zip_cli.is_file(), "the pinned 7-Zip fixture was not installed"
 
     expected_executables = {
-        str(path.resolve()).casefold()
-        for path in seven_zip_dir.glob("*.exe")
-        if path.is_file()
+        str(path.resolve()).casefold() for path in seven_zip_dir.glob("*.exe") if path.is_file()
     }
     assert str(seven_zip_cli.resolve()).casefold() in expected_executables
 
@@ -151,8 +141,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         _pump_until(
             app,
             lambda: (
-                app.block_button.cget("state") == "normal"
-                and C.MSG_SUCCESS_BLOCK in _log_text(app)
+                app.block_button.cget("state") == "normal" and C.MSG_SUCCESS_BLOCK in _log_text(app)
             ),
         )
 
