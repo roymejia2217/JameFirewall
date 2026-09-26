@@ -19,7 +19,7 @@ REQUIRED_HEADINGS = (
 RELEASE_TYPES = {"none", "patch", "minor", "major"}
 HEADING_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 COMMENT_PATTERN = re.compile(r"<!--.*?-->", re.DOTALL)
-PLACEHOLDER_PATTERN = re.compile(r"(?:todo|tbd|n/?a|[-–—])", re.IGNORECASE)
+PLACEHOLDER_PATTERN = re.compile(r"(?:todo|tbd|n/?a|[-\\u2013\\u2014])", re.IGNORECASE)
 RELEASE_TYPE_PATTERN = re.compile(r"^Release-Type:\s*(\S+)\s*$")
 RELEASE_REASON_PATTERN = re.compile(r"^Release-Reason:\s*(.+?)\s*$")
 
@@ -129,7 +129,8 @@ Low risk. Revert the focused governance commit if the gate blocks valid work.
 Release-Type: none
 Release-Reason: This change affects repository governance only.
 """
-    assert validate_description(valid) == "none"
+    if validate_description(valid) != "none":
+        raise AssertionError("valid governance body must resolve to release-type none")
 
     invalid = valid.replace("## Verification", "## Unknown")
     try:
