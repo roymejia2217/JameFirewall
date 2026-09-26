@@ -76,9 +76,9 @@ jobs:
         shell: pwsh
         run: |
           Move-Item -Path "dist/JameFirewall.exe" -Destination "dist/${{ env.CANONICAL_NAME }}"
-          $hash = Get-FileHash -Algorithm SHA256 "dist/${{ env.CANONICAL_NAME }}"
-          $hash.Hash | Out-File -FilePath "dist/${{ env.CANONICAL_NAME }}.sha256" -Encoding utf8
-          Write-Host "SHA256 (${{ env.CANONICAL_NAME }}): $($hash.Hash)"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/${{ env.CANONICAL_NAME }}").Hash.ToLower()
+          "$hash  ${{ env.CANONICAL_NAME }}" | Out-File -FilePath "dist/${{ env.CANONICAL_NAME }}.sha256" -Encoding ascii
+          Write-Host "SHA256 (${{ env.CANONICAL_NAME }}): $hash"
 
       - name: Preservar Artefactos de Release
         uses: actions/upload-artifact@v4
@@ -110,7 +110,7 @@ jobs:
       - name: Publicar GitHub Release con softprops/action-gh-release
         uses: softprops/action-gh-release@v2
         with:
-          name: "JameFirewall v${{ github.ref_name || '0.1.0' }}"
+          name: ${{ startsWith(github.ref_name, 'v') && format('JameFirewall {0}', github.ref_name) || format('JameFirewall v{0}', github.ref_name) }}
           tag_name: ${{ github.ref_name || 'v0.1.0' }}
           draft: false
           prerelease: false
