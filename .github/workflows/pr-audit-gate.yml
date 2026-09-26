@@ -1,79 +1,59 @@
-name: Pull Request Governance & Quality Audit
+name: Pull Request Governance
 
 on:
-  pull_request:
-    types: [opened, edited, synchronize, reopened]
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   contents: read
   pull-requests: read
 
 jobs:
-  validate-pr-title:
-    name: Validate Conventional Commit Title
+  governance:
+    name: PR Governance
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - name: Audit PR Title Syntax
-        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
-        with:
-          types: |
-            feat
-            fix
-            perf
-            refactor
-            docs
-            style
-            test
-            build
-            ci
-            chore
-            revert
-          scopes: |
-            core
-            firewall
-            os
-            persistence
-            ui
-            packaging
-            ci
-            deps
-            governance
-          requireScope: true
+      - name: Require agent branch from this repository
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
+            echo "Only same-repository agent branches are eligible for merge." >&2
+            exit 1
+          fi
 
-  validate-pr-body:
-    name: Validate Structured PR Body & Checklist
-    runs-on: ubuntu-latest
-    steps:
-      - name: Audit PR Description and Checklist
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+      - name: Checkout trusted base revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          script: |
-            const body = context.payload.pull_request.body;
-            if (!body || body.trim().length < 100) {
-              core.setFailed("❌ Error: El cuerpo del PR debe contener al menos 100 caracteres explicando la motivación y la arquitectura.");
-              return;
-            }
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
 
-            const requiredSections = [
-              "## 🎯 1. Propósito y Motivación",
-              "## 🛠️ 2. Arquitectura de la Solución",
-              "## 🧪 3. Evidencia de Pruebas",
-              "## ⚠️ 4. Análisis de Riesgos",
-              "## ✅ 5. Checklist de Calidad"
-            ];
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
 
-            for (const section of requiredSections) {
-              if (!body.includes(section)) {
-                core.setFailed(`❌ Error: Falta la sección obligatoria: "${section}" en el cuerpo del PR.`);
-                return;
-              }
-            }
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: true
 
-            if (body.includes("- [ ]")) {
-              core.setFailed("❌ Error: Todos los elementos del Checklist de Calidad deben estar completados (- [x]).");
-              return;
-            }
+      - name: Sync trusted governance dependencies
+        run: uv sync --frozen --all-extras --python 3.11
 
-            core.info("✅ Validación de cuerpo y checklist superada con éxito.");
+      - name: Validate pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: uv run cz check --message "$PR_TITLE"
+
+      - name: Validate pull request description
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pull-request.md"
+          uv run python scripts/validate_pr_description.py --body-file "$RUNNER_TEMP/pull-request.md"
