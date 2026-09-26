@@ -5,10 +5,11 @@ BeforeAll {
     }
 
     $resolvedExe = (Resolve-Path $sourceExe).Path
-    $runtimeDir = Join-Path $TestDrive "portable-runtime"
-    New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
+    $runtimeName = "jamefirewall-runtime-" + [guid]::NewGuid().ToString("N")
+    $script:runtimeDir = Join-Path ([System.IO.Path]::GetTempPath()) $runtimeName
+    New-Item -ItemType Directory -Path $script:runtimeDir -Force | Out-Null
 
-    $script:runtimeExe = Join-Path $runtimeDir "JameFirewall.exe"
+    $script:runtimeExe = Join-Path $script:runtimeDir "JameFirewall.exe"
     Copy-Item $resolvedExe $script:runtimeExe
 
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -58,19 +59,14 @@ Describe "JameFirewall packaged Windows runtime" {
         }
         finally {
             $env:PATH = $oldPath
-            Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
-                Where-Object {
-                    $_.StartTime -ge $startedAfter -and
-                    $_.Path -eq $script:runtimeExe
-                } |
-                Stop-Process -Force -ErrorAction SilentlyContinue
+            $ownedProcesses = @(
+                Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.StartTime -ge $startedAfter }
+            )
+            $ownedProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
+            $ownedProcesses | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 
-            Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
-                Where-Object {
-                    $_.StartTime -ge $startedAfter -and
-                    $_.Path -eq $script:runtimeExe
-                } |
-                Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $script:runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }
