@@ -1,18 +1,24 @@
-## 🎯 1. Propósito y Motivación (Why)
-<!-- Explica con precisión el problema o requerimiento que resuelve este Pull Request. -->
+## Summary
 
-## 🛠️ 2. Arquitectura de la Solución (What & How)
-<!-- Detalla los cambios de diseño, módulos, puertos, entidades o adaptadores modificados. -->
+<!-- Concisely describe the resulting behavior or repository change. -->
 
-## 🧪 3. Evidencia de Pruebas y Cobertura XP / TDD (Proof)
-<!-- Documenta las pruebas unitarias o de integración creadas y adjunta la salida de verify_gate.sh. -->
+## Motivation
 
-## ⚠️ 4. Análisis de Riesgos y Regresiones
-<!-- Evalúa si este cambio introduce Breaking Changes o posibles efectos colaterales en Windows. -->
+<!-- Explain the problem, requirement, or risk that makes this change necessary. -->
 
-## ✅ 5. Checklist de Calidad
-- [ ] El título sigue estrictamente Conventional Commits 1.0.0 con un scope válido.
-- [ ] No se utilizaron prefijos 'feat' para cambios exclusivos de tooling o CI.
-- [ ] Se ejecutó ./verify_gate.sh superando el 100% de las pruebas, Ruff y Mypy Strict.
-- [ ] Se preservó la arquitectura hexagonal y la cobertura de pruebas de dominio.
-- [ ] No se incorporaron dependencias ni workarounds sin autorización arquitectónica.
+## Changes
+
+<!-- Enumerate the concrete implementation changes. -->
+
+## Verification
+
+<!-- List automated commands, workflow evidence, and focused manual checks that passed. -->
+
+## Risk and rollback
+
+<!-- Describe failure modes and the rollback path. Use "None." only when genuinely appropriate. -->
+
+## Release impact
+
+Release-Type: <none|patch|minor|major>
+Release-Reason: <explain why this PR does or does not require a release>
