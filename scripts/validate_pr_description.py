@@ -34,17 +34,11 @@ def sections(body: str) -> dict[str, str]:
 
     unexpected = [heading for heading in headings if heading not in REQUIRED_HEADINGS]
     if unexpected:
-        raise DescriptionError(
-            f"unexpected level-2 section(s): {', '.join(unexpected)}"
-        )
+        raise DescriptionError(f"unexpected level-2 section(s): {', '.join(unexpected)}")
 
-    duplicates = [
-        heading for heading in REQUIRED_HEADINGS if headings.count(heading) > 1
-    ]
+    duplicates = [heading for heading in REQUIRED_HEADINGS if headings.count(heading) > 1]
     if duplicates:
-        raise DescriptionError(
-            f"duplicate required section(s): {', '.join(duplicates)}"
-        )
+        raise DescriptionError(f"duplicate required section(s): {', '.join(duplicates)}")
 
     missing = [heading for heading in REQUIRED_HEADINGS if heading not in headings]
     if missing:
@@ -97,9 +91,7 @@ def validate_description(body: str) -> str:
         if not content:
             raise DescriptionError(f"required section is empty: {heading}")
         if PLACEHOLDER_PATTERN.fullmatch(content):
-            raise DescriptionError(
-                f"required section contains only a placeholder: {heading}"
-            )
+            raise DescriptionError(f"required section contains only a placeholder: {heading}")
     return parse_release_impact(found["Release impact"])
 
 
@@ -164,9 +156,7 @@ def main() -> int:
         parser.error("--body-file is required unless --self-test is used")
 
     try:
-        release_type = validate_description(
-            args.body_file.read_text(encoding="utf-8")
-        )
+        release_type = validate_description(args.body_file.read_text(encoding="utf-8"))
     except (DescriptionError, OSError) as exc:
         print(f"pull request description contract: failed: {exc}", file=sys.stderr)
         return 2
