@@ -75,3 +75,27 @@ after the visibility transition and verified before any pull request is merged.
 Making the repository public exposes source history, Actions history, and Actions logs. The
 repository remains proprietary unless its license is changed separately; public visibility does not
 grant an open-source license by itself.
+
+
+## Bootstrap sequence for the current governance PR
+
+The final ruleset cannot require `PR Governance` until that check exists on the default branch and
+has reported successfully in the repository. GitHub requires a required status check to have run
+successfully in the repository recently before it can be selected as a required check.
+
+Use this one-time bootstrap sequence:
+
+1. Change repository visibility from private to public.
+2. Create a temporary active rule for the default branch that requires pull requests, linear
+   history, conversation resolution, strict `Required CI`, and blocks force pushes and deletion.
+3. Merge the current governance PR by rebase only after its latest `Required CI` is successful.
+4. Enable required CODEOWNERS review immediately after `.github/CODEOWNERS` reaches `main`.
+5. Open one ordinary same-repository agent PR so the trusted-base `PR Governance` workflow runs
+   from `main`.
+6. After `PR Governance` and `Required CI` both report success, import
+   `.github/rulesets/main-protection.json` and activate it.
+7. Enable repository-native auto-merge. Agent PRs may then opt into native auto-merge; GitHub will
+   complete the rebase only when every active requirement is satisfied.
+
+Do not require `PR Governance` during step 2: the workflow does not yet exist on the trusted base
+revision, so doing so would deadlock the bootstrap PR.
