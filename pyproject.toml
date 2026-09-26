@@ -107,6 +107,7 @@ markers = [
     "contract: pruebas de cumplimiento de protocolos de interfaz",
     "integration: pruebas de integración con persistencia y OS simulado",
     "windows_only: pruebas que requieren Windows nativo para validación final",
+    "windows_system: pruebas E2E contra aplicaciones y Windows Firewall reales",
 ]
 
 [tool.coverage.run]
