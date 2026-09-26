@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Validate JameFirewall pull request descriptions without network access."""
+"""Validate the repository's standards-based pull-request description contract.
+
+Policy sources:
+- Google Engineering Practices: a change description must explain what changed and why.
+- GitHub pull-request guidance: templates should capture change context, testing notes,
+  and related issues.
+
+This module is only the deterministic adapter that turns those documented expectations
+into a required status check. It is not the source of the policy.
+"""
 
 from __future__ import annotations
 
@@ -8,24 +17,14 @@ import re
 import sys
 from pathlib import Path
 
-REQUIRED_HEADINGS = (
-    "Summary",
-    "Motivation",
-    "Changes",
-    "Verification",
-    "Risk and rollback",
-    "Release impact",
-)
-RELEASE_TYPES = {"none", "patch", "minor", "major"}
+REQUIRED_HEADINGS = ("What", "Why", "Testing", "Related issues")
 HEADING_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 COMMENT_PATTERN = re.compile(r"<!--.*?-->", re.DOTALL)
-PLACEHOLDER_PATTERN = re.compile(r"(?:todo|tbd|n/?a|[-\\u2013\\u2014])", re.IGNORECASE)
-RELEASE_TYPE_PATTERN = re.compile(r"^Release-Type:\s*(\S+)\s*$")
-RELEASE_REASON_PATTERN = re.compile(r"^Release-Reason:\s*(.+?)\s*$")
+PLACEHOLDER_PATTERN = re.compile(r"^(?:todo|tbd|n/?a|[-\u2013\u2014])\.?$", re.IGNORECASE)
 
 
 class DescriptionError(ValueError):
-    """Raised when a pull request body does not meet the repository contract."""
+    """Raised when a pull-request description violates the documented contract."""
 
 
 def sections(body: str) -> dict[str, str]:
@@ -58,87 +57,73 @@ def normalized_content(value: str) -> str:
     return COMMENT_PATTERN.sub("", value).strip()
 
 
-def parse_release_impact(value: str) -> str:
-    content = normalized_content(value)
-    lines = [line.strip() for line in content.splitlines() if line.strip()]
-    if len(lines) != 2:
-        raise DescriptionError(
-            "release impact must contain exactly Release-Type and Release-Reason"
-        )
-
-    type_match = RELEASE_TYPE_PATTERN.fullmatch(lines[0])
-    if type_match is None:
-        raise DescriptionError("release impact must start with Release-Type")
-    release_type = type_match.group(1)
-    if release_type not in RELEASE_TYPES:
-        raise DescriptionError(f"invalid Release-Type: {release_type}")
-
-    reason_match = RELEASE_REASON_PATTERN.fullmatch(lines[1])
-    if reason_match is None:
-        raise DescriptionError("release impact must include Release-Reason")
-    reason = reason_match.group(1).strip()
-    if len(reason) < 20:
-        raise DescriptionError("Release-Reason must contain at least 20 characters")
-    if reason.startswith("<") and reason.endswith(">"):
-        raise DescriptionError("Release-Reason must not be a template placeholder")
-    return release_type
-
-
-def validate_description(body: str) -> str:
+def validate_description(body: str) -> None:
     found = sections(body)
-    for heading in REQUIRED_HEADINGS:
+
+    for heading in ("What", "Why", "Testing"):
         content = normalized_content(found[heading])
         if not content:
             raise DescriptionError(f"required section is empty: {heading}")
         if PLACEHOLDER_PATTERN.fullmatch(content):
             raise DescriptionError(f"required section contains only a placeholder: {heading}")
-    return parse_release_impact(found["Release impact"])
+
+    related = normalized_content(found["Related issues"])
+    if not related:
+        raise DescriptionError("required section is empty: Related issues")
+    if PLACEHOLDER_PATTERN.fullmatch(related) and related.casefold().rstrip(".") != "n/a":
+        raise DescriptionError("Related issues contains only a placeholder")
 
 
 def self_test() -> None:
-    valid = """## Summary
+    valid = """## What
 
-Harden the Windows acceptance boundary.
+Harden the native Windows acceptance boundary.
 
-## Motivation
+## Why
 
-Native runtime failures must block a pull request before merge.
+A successful build must not be treated as proof that the packaged application works.
 
-## Changes
+## Testing
 
-- Add a Windows system acceptance lane.
+Required CI passed on Linux and native Windows, including the packaged-runtime contract.
 
-## Verification
+## Related issues
 
-- Required CI passes on GitHub-hosted Windows.
-
-## Risk and rollback
-
-Low risk. Revert the focused governance commit if the gate blocks valid work.
-
-## Release impact
-
-Release-Type: none
-Release-Reason: This change affects repository governance only.
+None.
 """
-    if validate_description(valid) != "none":
-        raise AssertionError("valid governance body must resolve to release-type none")
+    validate_description(valid)
 
-    invalid = valid.replace("## Verification", "## Unknown")
+    invalid_heading = valid.replace("## Testing", "## Verification")
     try:
-        validate_description(invalid)
+        validate_description(invalid_heading)
     except DescriptionError:
         pass
     else:
         raise AssertionError("unknown headings must be rejected")
 
-    invalid_release = valid.replace("Release-Type: none", "Release-Type: beta")
+    invalid_order = valid.replace(
+        "## Why\n\nA successful build must not be treated as proof that the packaged application works.\n\n"
+        "## Testing",
+        "## Testing\n\nRequired CI passed on Linux and native Windows, including the packaged-runtime contract.\n\n"
+        "## Why",
+    )
     try:
-        validate_description(invalid_release)
+        validate_description(invalid_order)
     except DescriptionError:
         pass
     else:
-        raise AssertionError("unknown release types must be rejected")
+        raise AssertionError("out-of-order sections must be rejected")
+
+    placeholder = valid.replace(
+        "Required CI passed on Linux and native Windows, including the packaged-runtime contract.",
+        "TBD",
+    )
+    try:
+        validate_description(placeholder)
+    except DescriptionError:
+        pass
+    else:
+        raise AssertionError("placeholder-only required content must be rejected")
 
 
 def main() -> int:
@@ -156,12 +141,12 @@ def main() -> int:
         parser.error("--body-file is required unless --self-test is used")
 
     try:
-        release_type = validate_description(args.body_file.read_text(encoding="utf-8"))
+        validate_description(args.body_file.read_text(encoding="utf-8"))
     except (DescriptionError, OSError) as exc:
         print(f"pull request description contract: failed: {exc}", file=sys.stderr)
         return 2
 
-    print(f"pull request description contract: ok (release-type={release_type})")
+    print("pull request description contract: ok")
     return 0
 
 
