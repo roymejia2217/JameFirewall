@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import tempfile
 from pathlib import Path
 
 REQUIRED_HEADINGS = (
