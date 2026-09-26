@@ -99,7 +99,7 @@ jobs:
       - name: Install pinned 7-Zip system fixture
         shell: pwsh
         run: |
-          choco install 7zip --version=26.3.0 --yes --no-progress --force --allow-downgrade
+          choco install 7zip.install --version=26.3.0 --yes --no-progress --force --allow-downgrade
           $sevenZip = Join-Path $env:ProgramFiles "7-Zip\7z.exe"
           if (-not (Test-Path -LiteralPath $sevenZip)) {
             throw "Pinned 7-Zip fixture was not installed at $sevenZip"
