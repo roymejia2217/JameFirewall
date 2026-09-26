@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 # 1. Protección de importación para entornos no-Windows (Linux/macOS CI)
-if "winreg" not in sys.modules:
+if sys.platform != "win32" and "winreg" not in sys.modules:
     mock_winreg = types.ModuleType("winreg")
     mock_winreg.HKEY_LOCAL_MACHINE = 0x80000002  # type: ignore[attr-defined]
     mock_winreg.HKEY_CURRENT_USER = 0x80000001  # type: ignore[attr-defined]
