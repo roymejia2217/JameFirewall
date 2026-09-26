@@ -38,7 +38,7 @@ class JameFirewallApp:
         self.root.geometry(C.APP_GEOMETRY)
         self.root.resizable(False, True)
 
-        self.dispatcher = QueueDispatcher(root_tk=self)
+        self.dispatcher = QueueDispatcher(root_tk=self.root, log_sink=self.append_log)
 
         self._setup_icons()
         self._setup_styles()
