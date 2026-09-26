@@ -10,7 +10,7 @@ that a Windows desktop release works.
 - **Pester**: validates the packaged executable as a black-box Windows process.
 - **Windows Defender Firewall tooling**: native tests exercise the real `netsh`,
   `Get-NetFirewallRule`, and `Get-NetFirewallApplicationFilter` surfaces.
-- **Chocolatey**: installs the pinned 7-Zip system fixture on the GitHub-hosted Windows runner.
+- **Chocolatey**: installs the pinned `7zip.install` system fixture on the GitHub-hosted Windows runner.
 - **GitHub Actions**: executes Linux and Windows lanes independently and joins them through one
   required aggregate job.
 
@@ -23,7 +23,7 @@ The CI workflow pins third-party GitHub Actions to immutable commit SHAs and use
 2. Windows native pytest builds the real Tk widget tree and invokes its command bindings.
 3. Windows firewall integration performs a real create/audit/delete rule round trip using an
    isolated rule suffix and mandatory cleanup.
-4. The Windows system E2E installs pinned 7-Zip 26.3.0, opens JameFirewall settings, adds
+4. The Windows system E2E installs pinned `7zip.install` 26.3.0, opens JameFirewall settings, adds
    `C:\Program Files\7-Zip` through the real Tk button path, saves the configuration, invokes
    the real activation control, and verifies that every discovered 7-Zip executable receives
    enabled inbound and outbound `Block` rules in Windows Defender Firewall.
@@ -35,7 +35,7 @@ The CI workflow pins third-party GitHub Actions to immutable commit SHAs and use
 
 ## System fixture policy
 
-7-Zip is used because it is small, deterministic, has executable files under the standard
+`7zip.install` is used because it is small, deterministic, has executable files under the standard
 `Program Files` hierarchy, and does not require proprietary application licensing. CI installs
 version 26.3.0 explicitly rather than depending on whichever 7-Zip version happens to be baked
 into the runner image.
