@@ -21,13 +21,14 @@ class DummyRoot:
 
 def test_queue_dispatcher_posts_log_and_drains() -> None:
     root = DummyRoot()
-    dispatcher = QueueDispatcher(root_tk=root)
+    dispatcher = QueueDispatcher(root_tk=root, log_sink=root.append_log)
 
     dispatcher.post_log("Test message", "info")
     dispatcher.drain_queues()
 
     assert len(root.logs) == 1
     assert root.logs[0] == ("Test message", "info")
+    assert root.scheduled
 
     dispatcher.shutdown()
 
