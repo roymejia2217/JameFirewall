@@ -1,0 +1,11 @@
+# Governance and acceptance boundaries
+/.github/ @roymejia2217
+/pyproject.toml @roymejia2217
+/uv.lock @roymejia2217
+/verify_gate.sh @roymejia2217
+/JameFirewall.spec @roymejia2217
+/packaging/JameFirewall.spec @roymejia2217
+/tests/windows/ @roymejia2217
+/scripts/validate_pr_description.py @roymejia2217
+/docs/repository-governance.md @roymejia2217
+/docs/ci-testing-contract.md @roymejia2217
