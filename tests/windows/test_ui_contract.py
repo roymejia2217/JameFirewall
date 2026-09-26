@@ -48,21 +48,9 @@ def test_main_window_exposes_and_wires_primary_controls(monkeypatch: pytest.Monk
         app.unblock_button.invoke()
 
         assert events == ["refresh", "config", "block", "unblock"]
-    finally:
-        app.dispatcher.shutdown()
-        app.root.destroy()
 
-
-def test_config_window_exposes_expected_controls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Build the real configuration modal and verify its actionable controls."""
-    monkeypatch.setattr(JameFirewallApp, "_start_async_init", lambda self: None)
-
-    container = MagicMock(spec=AppContainer)
-    app = JameFirewallApp(container)
-    manage_config = MagicMock()
-    manage_config.get_directories.return_value = []
-
-    try:
+        manage_config = MagicMock()
+        manage_config.get_directories.return_value = []
         dialog = ConfigWindow(parent=app.root, manage_config_uc=manage_config)
         dialog.update_idletasks()
 
