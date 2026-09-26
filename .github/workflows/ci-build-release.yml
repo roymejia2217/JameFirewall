@@ -4,20 +4,22 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  # ==========================================================
-  # 1. QUALITY GATE & HARNESS (Cross-Platform)
-  # ==========================================================
   quality-gate:
-    name: Quality Gate & Test Harness
+    name: Release Quality Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
@@ -30,57 +32,36 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: "0.12.19"
           enable-cache: true
 
       - name: Sync locked dependencies
         run: uv sync --frozen --all-extras --python 3.11
 
-      - name: Verify Ruff Linters & Formatting
+      - name: Validate governance contract
+        run: uv run python scripts/validate_pr_description.py --self-test
+
+      - name: Validate formatting and lint
         run: |
-          uv run ruff check src tests
-          uv run ruff format --check src tests
+          uv run ruff check src tests scripts
+          uv run ruff format --check src tests scripts
 
-      - name: Verify Mypy Strict Mode
-        run: uv run mypy src tests
+      - name: Validate strict typing
+        run: uv run mypy src tests scripts
 
-      - name: Run Test Suite with Coverage
-        run: uv run pytest --cov=src/jame_firewall --cov-branch
+      - name: Run portable pytest suite
+        run: uv run pytest -m "not windows_only" --cov=src/jame_firewall --cov-branch
 
-  # ==========================================================
-  # 2. MOTOR DE RELEASE (Google Release-Please v4)
-  # ==========================================================
-  release-please:
-    name: Orchestrate Semantic Release
+  windows-release-preflight:
+    name: Windows Release Preflight
     needs: quality-gate
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
+    runs-on: windows-2025
+    timeout-minutes: 40
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-    steps:
-      - name: Run Release-Please Engine
-        id: release
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          token: ${{ secrets.GITHUB_TOKEN }}
+      candidate_sha256: ${{ steps.candidate-hash.outputs.sha256 }}
 
-  # ==========================================================
-  # 3. COMPILACIÓN NATIVA WINDOWS Y DISTRIBUCIÓN
-  # ==========================================================
-  build-and-publish-windows:
-    name: Native Windows Build & Asset Delivery
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch' }}
-    runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
@@ -90,43 +71,151 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Set up uv on Windows
+      - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: "0.12.19"
           enable-cache: true
 
-      - name: Sync locked build dependencies
+      - name: Sync locked dependencies
         run: uv sync --frozen --all-extras --python 3.11
 
-      - name: Determinar Nombre Canónico del Artefacto
+      - name: Run native Windows contracts
         shell: pwsh
         run: |
-          $ver = "${{ needs.release-please.outputs.version }}"
-          if ([string]::IsNullOrWhiteSpace($ver)) {
-            $ver = uv run python -c "import jame_firewall; print(jame_firewall.__version__)"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          uv run pytest -m "windows_only and not windows_system" --junitxml=artifacts/pytest-windows.xml -v
+
+      - name: Install pinned 7-Zip system fixture
+        shell: pwsh
+        run: |
+          choco install 7zip.install --version=26.3.0 --yes --no-progress --force --allow-downgrade
+          $sevenZip = Join-Path $env:ProgramFiles "7-Zip\7z.exe"
+          if (-not (Test-Path -LiteralPath $sevenZip)) {
+            throw "Pinned 7-Zip fixture was not installed at $sevenZip"
           }
-          $artifactName = "JameFirewall-v$ver-windows-x64.exe"
-          echo "CANONICAL_NAME=$artifactName" >> $env:GITHUB_ENV
-          Write-Host "Compilando artefacto canónico: $artifactName"
+          $productVersion = (Get-Item -LiteralPath $sevenZip).VersionInfo.ProductVersion
+          if (-not $productVersion.StartsWith("26.03")) {
+            throw "Unexpected 7-Zip product version: $productVersion"
+          }
 
-      - name: Compilar con PyInstaller
-        run: uv run pyinstaller JameFirewall.spec
+      - name: Run 7-Zip firewall system E2E
+        shell: pwsh
+        run: uv run pytest -m windows_system --junitxml=artifacts/pytest-windows-system.xml -v
 
-      - name: Renombrar y Generar Checksum GNU Coreutils
+      - name: Build production Windows executable
+        run: uv run pyinstaller --clean --noconfirm JameFirewall.spec
+
+      - name: Install pinned Pester
         shell: pwsh
         run: |
-          Move-Item -Path "dist/JameFirewall.exe" -Destination "dist/${{ env.CANONICAL_NAME }}"
-          $hash = (Get-FileHash -Algorithm SHA256 "dist/${{ env.CANONICAL_NAME }}").Hash.ToLower()
-          "$hash  ${{ env.CANONICAL_NAME }}" | Out-File -FilePath "dist/${{ env.CANONICAL_NAME }}.sha256" -Encoding ascii
-          Write-Host "SHA256 ($($env:CANONICAL_NAME)): $hash"
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -RequiredVersion 5.7.1 -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+          Import-Module Pester -RequiredVersion 5.7.1
+          if ((Get-Module Pester).Version.ToString() -ne "5.7.1") {
+            throw "Unexpected Pester version"
+          }
 
-      - name: Subir Assets a la Release Existente
+      - name: Validate packaged executable with Pester
         shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JAMEFIREWALL_EXE: ${{ github.workspace }}\dist\JameFirewall.exe
         run: |
-          $tag = "${{ needs.release-please.outputs.tag_name }}"
-          if ([string]::IsNullOrWhiteSpace($tag)) {
-            $tag = "v" + (uv run python -c "import jame_firewall; print(jame_firewall.__version__)")
-          }
-          gh release upload $tag "dist/${{ env.CANONICAL_NAME }}" "dist/${{ env.CANONICAL_NAME }}.sha256" --clobber
+          Import-Module Pester -RequiredVersion 5.7.1
+          $config = New-PesterConfiguration
+          $config.Run.Path = "tests/windows/runtime"
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = "Detailed"
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputFormat = "NUnitXml"
+          $config.TestResult.OutputPath = "artifacts/pester-windows.xml"
+          Invoke-Pester -Configuration $config
+
+      - name: Record candidate SHA-256
+        id: candidate-hash
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/JameFirewall.exe").Hash.ToLower()
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "$hash  JameFirewall.exe" | Out-File -FilePath "dist/JameFirewall.exe.sha256" -Encoding ascii
+
+      - name: Upload verified Windows release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-release-candidate
+          path: |
+            dist/JameFirewall.exe
+            dist/JameFirewall.exe.sha256
+            artifacts/pytest-windows.xml
+            artifacts/pytest-windows-system.xml
+            artifacts/pester-windows.xml
+          if-no-files-found: error
+
+  release-please:
+    name: Orchestrate Semantic Release
+    needs:
+      - quality-gate
+      - windows-release-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - name: Run Release-Please Engine
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-windows:
+    name: Publish Verified Windows Asset
+    needs:
+      - windows-release-preflight
+      - release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified Windows candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: windows-release-candidate
+          path: candidate
+
+      - name: Verify candidate identity and stage canonical assets
+        env:
+          EXPECTED_SHA256: ${{ needs.windows-release-preflight.outputs.candidate_sha256 }}
+          RELEASE_VERSION: ${{ needs.release-please.outputs.version }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPECTED_SHA256"
+          test -n "$RELEASE_VERSION"
+          test -n "$RELEASE_TAG"
+
+          ACTUAL_SHA256="$(sha256sum candidate/JameFirewall.exe | awk '{print $1}')"
+          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+
+          CANONICAL_NAME="JameFirewall-v${RELEASE_VERSION}-windows-x64.exe"
+          mv candidate/JameFirewall.exe "candidate/$CANONICAL_NAME"
+          printf '%s  %s\n' "$ACTUAL_SHA256" "$CANONICAL_NAME" > "candidate/$CANONICAL_NAME.sha256"
+
+          echo "CANONICAL_NAME=$CANONICAL_NAME" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Upload immutable assets to the created release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG"             "candidate/$CANONICAL_NAME"             "candidate/$CANONICAL_NAME.sha256"
