@@ -27,7 +27,7 @@ pytestmark = [
 ]
 
 STARTUP_TIMEOUT_SECONDS = 60.0
-FIREWALL_OPERATION_TIMEOUT_SECONDS = 240.0
+FIREWALL_OPERATION_TIMEOUT_SECONDS = 120.0
 
 
 def _pump_until(
@@ -158,7 +158,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         app.block_button.invoke()
         _pump_until(
             app,
-            lambda: app.block_button.cget("state") == "normal",
+            lambda: str(app.block_button.cget("state")) == "normal",
             timeout=FIREWALL_OPERATION_TIMEOUT_SECONDS,
         )
 
@@ -185,7 +185,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         app.unblock_button.invoke()
         _pump_until(
             app,
-            lambda: app.unblock_button.cget("state") == "normal",
+            lambda: str(app.unblock_button.cget("state")) == "normal",
             timeout=FIREWALL_OPERATION_TIMEOUT_SECONDS,
         )
 
