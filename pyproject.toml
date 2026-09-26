@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jame-firewall"
-version = "0.1.0"
+version = "0.2.0"
 description = "JameFirewall: Gestor profesional y unificado de reglas de Firewall de Windows para software y suites creativas."
 readme = "README.md"
 requires-python = ">=3.11"
