@@ -114,7 +114,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
     assert seven_zip_cli.is_file(), "the pinned 7-Zip fixture was not installed"
 
     expected_executables = {
-        str(path.resolve()).casefold() for path in seven_zip_dir.glob("*.exe") if path.is_file()
+        str(path.resolve()).casefold() for path in seven_zip_dir.rglob("*.exe") if path.is_file()
     }
     assert str(seven_zip_cli.resolve()).casefold() in expected_executables
 
