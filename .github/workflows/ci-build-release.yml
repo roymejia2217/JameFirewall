@@ -1,13 +1,14 @@
-name: JameFirewall CI/CD & Canonical Release Build
+name: JameFirewall CI/CD & Automated Release Pipeline
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   # ==========================================================
@@ -41,11 +42,32 @@ jobs:
         run: uv run pytest --cov=src/jame_firewall --cov-branch
 
   # ==========================================================
-  # 2. COMPILACIÓN NATIVA WINDOWS Y NOMENCLATURA CANÓNICA
+  # 2. MOTOR DE RELEASE (Google Release-Please v4)
   # ==========================================================
-  build-windows:
-    name: Native Windows Build (.exe)
+  release-please:
+    name: Orchestrate Semantic Release
     needs: quality-gate
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Run Release-Please Engine
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================================
+  # 3. COMPILACIÓN NATIVA WINDOWS Y DISTRIBUCIÓN
+  # ==========================================================
+  build-and-publish-windows:
+    name: Native Windows Build & Asset Delivery
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: windows-latest
     steps:
       - name: Checkout Repository
@@ -60,61 +82,35 @@ jobs:
       - name: Sync Build Dependencies
         run: uv sync --all-extras
 
-      - name: Extraer Versión Semántica y Construir Nombre Canónico
+      - name: Determinar Nombre Canónico del Artefacto
         shell: pwsh
         run: |
-          $ver = uv run python -c "import jame_firewall; print(jame_firewall.__version__)"
+          $ver = "${{ needs.release-please.outputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($ver)) {
+            $ver = uv run python -c "import jame_firewall; print(jame_firewall.__version__)"
+          }
           $artifactName = "JameFirewall-v$ver-windows-x64.exe"
-          echo "VERSION=$ver" >> $env:GITHUB_ENV
           echo "CANONICAL_NAME=$artifactName" >> $env:GITHUB_ENV
-          Write-Host "Compilando versión canónica: $artifactName"
+          Write-Host "Compilando artefacto canónico: $artifactName"
 
       - name: Compilar con PyInstaller
         run: uv run pyinstaller JameFirewall.spec
 
-      - name: Renombrar a Formato Canónico y Generar Hash SHA-256
+      - name: Renombrar y Generar Checksum GNU Coreutils
         shell: pwsh
         run: |
           Move-Item -Path "dist/JameFirewall.exe" -Destination "dist/${{ env.CANONICAL_NAME }}"
           $hash = (Get-FileHash -Algorithm SHA256 "dist/${{ env.CANONICAL_NAME }}").Hash.ToLower()
           "$hash  ${{ env.CANONICAL_NAME }}" | Out-File -FilePath "dist/${{ env.CANONICAL_NAME }}.sha256" -Encoding ascii
-          Write-Host "SHA256 (${{ env.CANONICAL_NAME }}): $hash"
+          Write-Host "SHA256 ($($env:CANONICAL_NAME)): $hash"
 
-      - name: Preservar Artefactos de Release
-        uses: actions/upload-artifact@v4
-        with:
-          name: jamefirewall-release-assets
-          path: |
-            dist/${{ env.CANONICAL_NAME }}
-            dist/${{ env.CANONICAL_NAME }}.sha256
-          retention-days: 14
-
-  # ==========================================================
-  # 3. PUBLICACIÓN OFICIAL DE RELEASE EN GITHUB
-  # ==========================================================
-  publish-release:
-    name: Publish Official GitHub Release
-    needs: build-windows
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Descargar Artefactos Canónicos
-        uses: actions/download-artifact@v4
-        with:
-          name: jamefirewall-release-assets
-          path: release_assets
-
-      - name: Publicar GitHub Release con softprops/action-gh-release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ startsWith(github.ref_name, 'v') && format('JameFirewall {0}', github.ref_name) || format('JameFirewall v{0}', github.ref_name) }}
-          tag_name: ${{ github.ref_name || 'v0.1.0' }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: release_assets/*
+      - name: Subir Assets a la Release Existente
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ needs.release-please.outputs.tag_name }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "v" + (uv run python -c "import jame_firewall; print(jame_firewall.__version__)")
+          }
+          gh release upload $tag "dist/${{ env.CANONICAL_NAME }}" "dist/${{ env.CANONICAL_NAME }}.sha256" --clobber

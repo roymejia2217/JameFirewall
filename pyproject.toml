@@ -24,6 +24,7 @@ dev = [
     "mypy>=1.14.0",
     "pre-commit>=4.1.0",
     "pyinstaller>=6.11.0",
+    "commitizen>=4.18.0",
 ]
 
 [project.scripts]
@@ -70,6 +71,7 @@ indent-style = "space"
 # --- MYPY STRICT TYPE CHECKING ---
 [tool.mypy]
 python_version = "3.11"
+mypy_path = "src"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -85,6 +87,10 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = "jame_firewall.presentation.*"
 disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_decorators = false
 
 # --- PYTEST CONFIGURATION ---
 [tool.pytest.ini_options]
@@ -109,4 +115,16 @@ source = ["src/jame_firewall"]
 omit = [
     "src/jame_firewall/presentation/app.py",
     "src/jame_firewall/__main__.py",
+]
+
+# --- COMMITIZEN CONFIGURATION (CONVENTIONAL COMMITS 1.0.0) ---
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+version_scheme = "semver2"
+version_files = [
+    "pyproject.toml:version",
+    "src/jame_firewall/__init__.py:__version__",
+    ".release-please-manifest.json:."
 ]
