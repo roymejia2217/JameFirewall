@@ -1,24 +1,26 @@
-## Summary
+## What
 
-<!-- Concisely describe the resulting behavior or repository change. -->
+<!--
+Summarize the resulting change. Focus on what changes for the codebase, runtime, or users.
+-->
 
-## Motivation
+## Why
 
-<!-- Explain the problem, requirement, or risk that makes this change necessary. -->
+<!--
+Explain the problem or requirement and the context needed to understand the decision.
+Include important limitations or trade-offs that are not obvious from the diff.
+-->
 
-## Changes
+## Testing
 
-<!-- Enumerate the concrete implementation changes. -->
+<!--
+Describe how the change was verified. CI and required status checks are authoritative evidence;
+do not use self-attested checkboxes as a substitute for automated verification.
+-->
 
-## Verification
+## Related issues
 
-<!-- List automated commands, workflow evidence, and focused manual checks that passed. -->
-
-## Risk and rollback
-
-<!-- Describe failure modes and the rollback path. Use "None." only when genuinely appropriate. -->
-
-## Release impact
-
-Release-Type: <none|patch|minor|major>
-Release-Reason: <explain why this PR does or does not require a release>
+<!--
+Use GitHub closing keywords when applicable, for example: "Fixes #123".
+Write "None." when there is no related issue.
+-->

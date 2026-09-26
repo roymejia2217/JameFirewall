@@ -38,6 +38,28 @@ Required protections:
 The required checks are intentionally aggregate job names. Internal job decomposition may evolve
 without weakening the repository-level merge contract.
 
+## Pull request metadata policy
+
+JameFirewall does not treat its PR-body shape as a universal industry specification. No such
+specification exists. The policy is a narrow repository contract derived from documented external
+practice:
+
+- Conventional Commits defines machine-readable title and commit semantics.
+- Google Engineering Practices defines the information a durable change description should carry:
+  what changed, why it changed, and relevant context.
+- GitHub provides the native pull-request-template mechanism and recommends capturing purpose,
+  related issues, and testing notes.
+- GitHub required status checks and rulesets are the actual merge-enforcement boundary.
+
+The body contract is therefore limited to `What`, `Why`, `Testing`, and `Related issues`.
+It deliberately excludes decorative emoji, numbered headings, self-attested quality checklists,
+manual release-type fields, and mandatory architecture/TDD prose. Those items either have no
+general standard or duplicate evidence already produced by CI and release tooling.
+
+The in-repository validator is an enforcement adapter for this documented policy, not an
+independent source of engineering policy. `PR Governance`, once required by the host ruleset,
+fails closed when the description contract is not satisfied.
+
 ## Agent-only merge eligibility
 
 `PR Governance` runs from the trusted base revision through `pull_request_target`. It never

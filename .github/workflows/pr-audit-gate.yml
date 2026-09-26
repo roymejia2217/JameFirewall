@@ -47,10 +47,34 @@ jobs:
       - name: Sync trusted governance dependencies
         run: uv sync --frozen --all-extras --python 3.11
 
-      - name: Validate pull request title
+      - name: Validate Conventional Commits pull request title
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: uv run cz check --message "$PR_TITLE"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            style
+            test
+            build
+            ci
+            chore
+            revert
+          scopes: |
+            core
+            firewall
+            os
+            persistence
+            ui
+            packaging
+            ci
+            deps
+            governance
+          requireScope: true
 
       - name: Validate pull request description
         env:
