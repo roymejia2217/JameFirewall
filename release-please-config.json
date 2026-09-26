@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "JameFirewall",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": false,
+      "extra-files": [
+        "src/jame_firewall/__init__.py"
+      ],
+      "changelog-sections": [
+        {"type": "feat", "section": "✨ Nuevas Funcionalidades", "hidden": false},
+        {"type": "fix", "section": "🐛 Corrección de Errores", "hidden": false},
+        {"type": "perf", "section": "⚡ Mejoras de Rendimiento", "hidden": false},
+        {"type": "refactor", "section": "♻️ Refactorización Interna", "hidden": false},
+        {"type": "docs", "section": "📚 Documentación", "hidden": false},
+        {"type": "chore", "section": "🔧 Tareas y Mantenimiento", "hidden": true}
+      ]
+    }
+  }
+}
