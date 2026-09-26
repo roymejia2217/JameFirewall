@@ -81,14 +81,6 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
 
-[[tool.mypy.overrides]]
-module = [
-    "ttkbootstrap.*",
-    "PIL.*",
-    "winreg.*",
-]
-ignore_missing_imports = true
-
 # --- PYTEST CONFIGURATION ---
 [tool.pytest.ini_options]
 minversion = "8.0"
