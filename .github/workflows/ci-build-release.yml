@@ -1,0 +1,120 @@
+name: JameFirewall CI/CD & Canonical Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================================
+  # 1. QUALITY GATE & HARNESS (Cross-Platform)
+  # ==========================================================
+  quality-gate:
+    name: Quality Gate & Test Harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Sync Dependencies
+        run: uv sync --all-extras
+
+      - name: Verify Ruff Linters & Formatting
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Verify Mypy Strict Mode
+        run: uv run mypy src tests
+
+      - name: Run Test Suite with Coverage
+        run: uv run pytest --cov=src/jame_firewall --cov-branch
+
+  # ==========================================================
+  # 2. COMPILACIÓN NATIVA WINDOWS Y NOMENCLATURA CANÓNICA
+  # ==========================================================
+  build-windows:
+    name: Native Windows Build (.exe)
+    needs: quality-gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup uv on Windows
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Sync Build Dependencies
+        run: uv sync --all-extras
+
+      - name: Extraer Versión Semántica y Construir Nombre Canónico
+        shell: pwsh
+        run: |
+          $ver = uv run python -c "import jame_firewall; print(jame_firewall.__version__)"
+          $artifactName = "JameFirewall-v$ver-windows-x64.exe"
+          echo "VERSION=$ver" >> $env:GITHUB_ENV
+          echo "CANONICAL_NAME=$artifactName" >> $env:GITHUB_ENV
+          Write-Host "Compilando versión canónica: $artifactName"
+
+      - name: Compilar con PyInstaller
+        run: uv run pyinstaller JameFirewall.spec
+
+      - name: Renombrar a Formato Canónico y Generar Hash SHA-256
+        shell: pwsh
+        run: |
+          Move-Item -Path "dist/JameFirewall.exe" -Destination "dist/${{ env.CANONICAL_NAME }}"
+          $hash = Get-FileHash -Algorithm SHA256 "dist/${{ env.CANONICAL_NAME }}"
+          $hash.Hash | Out-File -FilePath "dist/${{ env.CANONICAL_NAME }}.sha256" -Encoding utf8
+          Write-Host "SHA256 (${{ env.CANONICAL_NAME }}): $($hash.Hash)"
+
+      - name: Preservar Artefactos de Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: jamefirewall-release-assets
+          path: |
+            dist/${{ env.CANONICAL_NAME }}
+            dist/${{ env.CANONICAL_NAME }}.sha256
+          retention-days: 14
+
+  # ==========================================================
+  # 3. PUBLICACIÓN OFICIAL DE RELEASE EN GITHUB
+  # ==========================================================
+  publish-release:
+    name: Publish Official GitHub Release
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Descargar Artefactos Canónicos
+        uses: actions/download-artifact@v4
+        with:
+          name: jamefirewall-release-assets
+          path: release_assets
+
+      - name: Publicar GitHub Release con softprops/action-gh-release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "JameFirewall v${{ github.ref_name || '0.1.0' }}"
+          tag_name: ${{ github.ref_name || 'v0.1.0' }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
