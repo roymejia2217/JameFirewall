@@ -21,8 +21,8 @@ if grep -rnI -E "class AdobeFirewallManager|APP_TITLE = \"Firewall Manager\"" sr
     exit 1
 fi
 
-echo "[5/5] Verificando Motor de Commitizen y Sintaxis de Conventional Commits..."
-/home/roy/.local/bin/uv run cz check --message "feat(ci): test sample conventional commit" > /dev/null
+echo "[5/5] Verificando Motor de Commitlint y Gobernanza de Commits..."
+/home/roy/.local/bin/uv run pre-commit run commitlint --hook-stage commit-msg --commit-msg-filename .git/COMMIT_EDITMSG > /dev/null
 
 echo "=========================================================="
 echo ">>> QUALITY GATE SCORECARD: 100% APROBADO (RELEASE READY) <<<"

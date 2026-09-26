@@ -1,0 +1,79 @@
+name: Pull Request Governance & Quality Audit
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+jobs:
+  validate-pr-title:
+    name: Validate Conventional Commit Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Audit PR Title Syntax
+        uses: amannn/action-semantic-pull-request@v6
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            style
+            test
+            build
+            ci
+            chore
+            revert
+          scopes: |
+            core
+            firewall
+            os
+            persistence
+            ui
+            packaging
+            ci
+            deps
+            governance
+          requireScope: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  validate-pr-body:
+    name: Validate Structured PR Body & Checklist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Audit PR Description and Checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body;
+            if (!body || body.trim().length < 100) {
+              core.setFailed("❌ Error: El cuerpo del PR debe contener al menos 100 caracteres explicando la motivación y la arquitectura.");
+              return;
+            }
+
+            const requiredSections = [
+              "## 🎯 1. Propósito y Motivación",
+              "## 🛠️ 2. Arquitectura de la Solución",
+              "## 🧪 3. Evidencia de Pruebas",
+              "## ⚠️ 4. Análisis de Riesgos",
+              "## ✅ 5. Checklist de Calidad"
+            ];
+
+            for (const section of requiredSections) {
+              if (!body.includes(section)) {
+                core.setFailed(`❌ Error: Falta la sección obligatoria: "${section}" en el cuerpo del PR.`);
+                return;
+              }
+            }
+
+            if (body.includes("- [ ]")) {
+              core.setFailed("❌ Error: Todos los elementos del Checklist de Calidad deben estar completados (- [x]).");
+              return;
+            }
+
+            core.info("✅ Validación de cuerpo y checklist superada con éxito.");

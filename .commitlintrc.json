@@ -1,0 +1,42 @@
+{
+  "extends": ["@commitlint/config-conventional"],
+  "rules": {
+    "type-enum": [
+      2,
+      "always",
+      [
+        "feat",
+        "fix",
+        "perf",
+        "refactor",
+        "docs",
+        "style",
+        "test",
+        "build",
+        "ci",
+        "chore",
+        "revert"
+      ]
+    ],
+    "scope-enum": [
+      2,
+      "always",
+      [
+        "core",
+        "firewall",
+        "os",
+        "persistence",
+        "ui",
+        "packaging",
+        "ci",
+        "deps",
+        "governance"
+      ]
+    ],
+    "header-max-length": [2, "always", 72],
+    "body-leading-blank": [2, "always"],
+    "body-max-line-length": [2, "always", 100],
+    "footer-leading-blank": [2, "always"],
+    "footer-max-line-length": [2, "always", 100]
+  }
+}
