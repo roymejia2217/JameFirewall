@@ -4,6 +4,7 @@
 APP_TITLE = "JameFirewall"
 APP_GEOMETRY = "360x520"
 APP_THEME = "darkly"
+APP_ICON_RESOURCE = "res/icon/jamefirewall.ico"
 
 # --- ETIQUETAS ---
 LBL_SYSTEM_STATUS = "Estado del Sistema"

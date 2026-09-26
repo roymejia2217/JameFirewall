@@ -46,7 +46,7 @@ class JameFirewallApp:
         self._start_async_init()
 
     def _setup_icons(self) -> None:
-        icon_path = get_resource_path("res/icon/128.ico")
+        icon_path = get_resource_path(C.APP_ICON_RESOURCE)
         if icon_path.exists():
             with contextlib.suppress(tk.TclError, AttributeError):
                 self.root.iconbitmap(str(icon_path))
