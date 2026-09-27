@@ -1,0 +1,127 @@
+name: Recover Verified Windows Release Asset
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: GitHub Actions run containing the verified Windows candidate
+        required: true
+        type: string
+      source_run_head_sha:
+        description: Exact head SHA of the trusted source run
+        required: true
+        type: string
+      release_tag:
+        description: Existing GitHub Release tag to repair
+        required: true
+        type: string
+      release_target_sha:
+        description: Exact commit SHA targeted by the existing release
+        required: true
+        type: string
+      release_version:
+        description: Canonical SemVer without the v prefix
+        required: true
+        type: string
+      expected_sha256:
+        description: SHA-256 recorded by the successful Windows preflight
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-asset-recovery-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  recover-windows:
+    name: Recover Verified Windows Asset
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Checkout recovery tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate recovery request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_HEAD_SHA: ${{ inputs.source_run_head_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TARGET_SHA: ${{ inputs.release_target_sha }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_TAG" = "v$RELEASE_VERSION"
+
+          RUN_METADATA="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+          test "$(jq -r '.name' <<<"$RUN_METADATA")" = "JameFirewall CI/CD & Automated Release Pipeline"
+          test "$(jq -r '.path' <<<"$RUN_METADATA")" = ".github/workflows/ci-build-release.yml"
+          test "$(jq -r '.head_branch' <<<"$RUN_METADATA")" = "main"
+          test "$(jq -r '.event' <<<"$RUN_METADATA")" = "push"
+          test "$(jq -r '.status' <<<"$RUN_METADATA")" = "completed"
+          test "$(jq -r '.conclusion' <<<"$RUN_METADATA")" = "failure"
+          test "$(jq -r '.head_sha' <<<"$RUN_METADATA")" = "$SOURCE_RUN_HEAD_SHA"
+
+          RELEASE_METADATA="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          test "$(jq -r '.draft' <<<"$RELEASE_METADATA")" = "false"
+          test "$(jq -r '.prerelease' <<<"$RELEASE_METADATA")" = "false"
+          test "$(jq -r '.target_commitish' <<<"$RELEASE_METADATA")" = "$RELEASE_TARGET_SHA"
+
+          TAG_METADATA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG")"
+          test "$(jq -r '.object.type' <<<"$TAG_METADATA")" = "commit"
+          test "$(jq -r '.object.sha' <<<"$TAG_METADATA")" = "$RELEASE_TARGET_SHA"
+
+          CANONICAL_NAME="JameFirewall-v${RELEASE_VERSION}-windows-x64.exe"
+          CHECKSUM_NAME="$CANONICAL_NAME.sha256"
+          EXISTING_ASSETS="$(jq -r '.assets[].name' <<<"$RELEASE_METADATA")"
+
+          if grep -Fxq "$CANONICAL_NAME" <<<"$EXISTING_ASSETS" ||
+             grep -Fxq "$CHECKSUM_NAME" <<<"$EXISTING_ASSETS"; then
+            echo "existing release asset prevents recovery overwrite" >&2
+            exit 1
+          fi
+
+      - name: Download verified Windows candidate from source run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: windows-release-candidate
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify candidate identity and stage canonical assets
+        env:
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/stage_release_assets.py \
+            --candidate-root candidate \
+            --expected-sha256 "$EXPECTED_SHA256" \
+            --release-version "$RELEASE_VERSION"
+      - name: Upload verified assets to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          CANONICAL_NAME="JameFirewall-v${RELEASE_VERSION}-windows-x64.exe"
+          gh release upload "$RELEASE_TAG" \
+            "candidate/$CANONICAL_NAME" \
+            "candidate/$CANONICAL_NAME.sha256"

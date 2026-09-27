@@ -200,6 +200,11 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
       - name: Download verified Windows candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -217,13 +222,12 @@ jobs:
           test -n "$RELEASE_VERSION"
           test -n "$RELEASE_TAG"
 
-          ACTUAL_SHA256="$(sha256sum candidate/JameFirewall.exe | awk '{print $1}')"
-          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+          python3 scripts/stage_release_assets.py \
+            --candidate-root candidate \
+            --expected-sha256 "$EXPECTED_SHA256" \
+            --release-version "$RELEASE_VERSION"
 
           CANONICAL_NAME="JameFirewall-v${RELEASE_VERSION}-windows-x64.exe"
-          mv candidate/JameFirewall.exe "candidate/$CANONICAL_NAME"
-          printf '%s  %s\n' "$ACTUAL_SHA256" "$CANONICAL_NAME" > "candidate/$CANONICAL_NAME.sha256"
-
           echo "CANONICAL_NAME=$CANONICAL_NAME" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
 
