@@ -28,6 +28,11 @@ Required protections:
 - Do not require Code Owner approval while the repository has a single maintainer whose GitHub
   identity is also the author identity used by repository agents; GitHub forbids self-approval and
   that configuration would deadlock native auto-merge rather than add an independent reviewer.
+- Keep GitHub's extra approval protection for unattributed Copilot pull requests enabled. This is
+  separate from Code Owner review and does not apply to the current agent PRs attributed to
+  `@roymejia2217`.
+- Keep the server-canonical `required_reviewers` collection explicitly empty until an independent
+  reviewing team is introduced.
 - Dismiss stale approvals when new commits affect governed paths.
 - Require status checks before merging.
 - Require branches to be up to date before merging.

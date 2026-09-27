@@ -49,6 +49,8 @@ def test_pull_requests_are_rebase_only_without_single_maintainer_review_deadlock
     assert parameters["dismiss_stale_reviews_on_push"] is True
     assert parameters["required_approving_review_count"] == 0
     assert parameters["require_last_push_approval"] is False
+    assert parameters["required_reviewers"] == []
+    assert parameters["require_extra_approval_for_unattributed_changes"] is True
 
     # The sole CODEOWNER is also the identity used by repository agents. GitHub
     # forbids authors from approving their own PR, so requiring CODEOWNER review
