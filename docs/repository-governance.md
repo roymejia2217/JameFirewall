@@ -92,8 +92,11 @@ identity-, repository-, and branch-bound; the human PR-body validator is not wea
 
 The semantic-release job follows the permission profile documented by the pinned Release Please
 action: `contents: write`, `issues: write`, and `pull-requests: write`. Those permissions are
-scoped to that job. The downstream verified-asset publisher remains limited to `contents: write`
-so release orchestration authority is not inherited by artifact publication.
+scoped to that job. Release Please is also configured with `force-tag-creation: true`, so the
+release tag is created explicitly before GitHub Release creation. This keeps tag authority inside
+the pinned upstream release engine while avoiding any operator-created recovery tag or broader
+workflow-write credential. The downstream verified-asset publisher remains limited to
+`contents: write` so release orchestration authority is not inherited by artifact publication.
 
 The in-repository validator is an enforcement adapter for this documented policy, not an
 independent source of engineering policy. `PR Governance`, once required by the host ruleset,
