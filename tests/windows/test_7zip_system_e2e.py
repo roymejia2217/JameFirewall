@@ -5,15 +5,18 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import subprocess
 import sys
 import time
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
+from tests.windows.firewall_probe import (
+    FirewallRuleSnapshot,
+    managed_rule_names,
+    probe_firewall_rules,
+)
 
 from jame_firewall.infrastructure.container import AppContainer
 from jame_firewall.presentation import constants as C
@@ -56,43 +59,15 @@ def _log_text(app: JameFirewallApp) -> str:
     return str(app.log_text.text.get("1.0", "end-1c"))
 
 
-def _firewall_rules() -> list[dict[str, str]]:
-    """Read JameFirewall rules through the native Windows Firewall PowerShell API."""
-    script = r"""
-$rules = Get-NetFirewallRule -DisplayName '* jame-block' -ErrorAction SilentlyContinue
-$items = foreach ($rule in $rules) {
-    $filters = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $rule)
-    foreach ($filter in $filters) {
-        [PSCustomObject]@{
-            DisplayName = $rule.DisplayName
-            Direction = [string]$rule.Direction
-            Action = [string]$rule.Action
-            Enabled = [string]$rule.Enabled
-            Program = [string]$filter.Program
-        }
-    }
-}
-if ($items) {
-    $items | ConvertTo-Json -Compress
-} else {
-    '[]'
-}
-"""
-    completed = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    raw: Any = json.loads(completed.stdout)
-    if isinstance(raw, dict):
-        raw = [raw]
-    return cast(list[dict[str, str]], raw)
-
-
-def _rules_for_programs(programs: set[str]) -> list[dict[str, str]]:
-    return [rule for rule in _firewall_rules() if rule.get("Program", "").casefold() in programs]
+def _rules_for_programs(
+    rule_names: tuple[str, ...],
+    programs: set[str],
+) -> list[FirewallRuleSnapshot]:
+    return [
+        rule
+        for rule in probe_firewall_rules(rule_names)
+        if rule.get("Program", "").casefold() in programs
+    ]
 
 
 def _find_config_dialog(app: JameFirewallApp) -> ConfigWindow:
@@ -113,9 +88,9 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
     seven_zip_cli = seven_zip_dir / "7z.exe"
     assert seven_zip_cli.is_file(), "the pinned 7-Zip fixture was not installed"
 
-    expected_executables = {
-        str(path.resolve()).casefold() for path in seven_zip_dir.rglob("*.exe") if path.is_file()
-    }
+    expected_paths = {path.resolve() for path in seven_zip_dir.rglob("*.exe") if path.is_file()}
+    expected_executables = {str(path).casefold() for path in expected_paths}
+    expected_rule_names = managed_rule_names(expected_paths)
     assert str(seven_zip_cli.resolve()).casefold() in expected_executables
 
     baseline_dir = tmp_path / "baseline-empty"
@@ -128,7 +103,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
 
     container = AppContainer.create_production(config_path=config_path)
     container.unblock_use_case.execute()
-    assert not _rules_for_programs(expected_executables)
+    assert not _rules_for_programs(expected_rule_names, expected_executables)
 
     app: JameFirewallApp | None = None
     try:
@@ -166,10 +141,10 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         assert "Error de bloqueo:" not in block_log, block_log
         assert C.MSG_SUCCESS_BLOCK in block_log, block_log
 
-        created_rules = _rules_for_programs(expected_executables)
+        created_rules = _rules_for_programs(expected_rule_names, expected_executables)
         assert created_rules, "JameFirewall created no 7-Zip firewall rules"
 
-        by_program: dict[str, list[dict[str, str]]] = {}
+        by_program: dict[str, list[FirewallRuleSnapshot]] = {}
         for rule in created_rules:
             by_program.setdefault(rule["Program"].casefold(), []).append(rule)
 
@@ -192,7 +167,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         unblock_log = _log_text(app)
         assert "Error de desbloqueo:" not in unblock_log, unblock_log
         assert C.MSG_SUCCESS_UNBLOCK in unblock_log, unblock_log
-        assert not _rules_for_programs(expected_executables)
+        assert not _rules_for_programs(expected_rule_names, expected_executables)
         assert app.status_label.cget("text") == C.STATUS_UNPROTECTED
     finally:
         with contextlib.suppress(Exception):
