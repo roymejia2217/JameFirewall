@@ -24,7 +24,10 @@ Create one active branch ruleset targeting the default branch with no bypass act
 Required protections:
 
 - Require a pull request before merging.
-- Require review from Code Owners for paths covered by `.github/CODEOWNERS`.
+- Preserve `.github/CODEOWNERS` as the explicit ownership map for critical surfaces.
+- Do not require Code Owner approval while the repository has a single maintainer whose GitHub
+  identity is also the author identity used by repository agents; GitHub forbids self-approval and
+  that configuration would deadlock native auto-merge rather than add an independent reviewer.
 - Dismiss stale approvals when new commits affect governed paths.
 - Require status checks before merging.
 - Require branches to be up to date before merging.
@@ -69,11 +72,13 @@ not the JameFirewall repository itself.
 That policy means public forks may inspect and fork the source, but only branches created by actors
 with push access to this repository are candidates for the automated merge path.
 
-Governance-critical paths are additionally covered by `.github/CODEOWNERS`. Changes to workflows,
-dependency policy, PyInstaller packaging, native Windows acceptance tests, or the governance
-contracts require approval from `@roymejia2217`. Ordinary product-code PRs do not acquire this
-manual-review requirement solely from CODEOWNERS and remain eligible for native auto-merge after
-their required checks pass.
+Governance-critical paths remain covered by `.github/CODEOWNERS` so ownership is explicit and
+future multi-maintainer review policy has a canonical source. While `@roymejia2217` is the sole
+maintainer and repository agents commit through that same GitHub identity, CODEOWNER review is not
+a merge requirement because it cannot provide an independent approval. Critical changes remain
+fail-closed behind the same trusted-base `PR Governance` and `Required CI` checks as every other
+merge candidate. If an independent maintainer is added, required CODEOWNER review can be enabled
+without changing the ownership map.
 
 ## Required CI
 
@@ -110,13 +115,13 @@ Use this one-time bootstrap sequence:
 1. Change repository visibility from private to public.
 2. Create a temporary active rule for the default branch that requires pull requests, linear
    history, conversation resolution, strict `Required CI`, and blocks force pushes and deletion.
-3. Merge the current governance PR by rebase only after its latest `Required CI` is successful.
-4. Enable required CODEOWNERS review immediately after `.github/CODEOWNERS` reaches `main`.
-5. Open one ordinary same-repository agent PR so the trusted-base `PR Governance` workflow runs
+3. Merge the bootstrap governance PR by rebase only after its latest `Required CI` is successful.
+4. Open one ordinary same-repository agent PR so the trusted-base `PR Governance` workflow runs
    from `main`.
-6. After `PR Governance` and `Required CI` both report success, import
-   `.github/rulesets/main-protection.json` and activate it.
-7. Enable repository-native auto-merge. Agent PRs may then opt into native auto-merge; GitHub will
+5. After `PR Governance` and `Required CI` both report success, import
+   `.github/rulesets/main-protection.json` and activate it. Keep CODEOWNERS review disabled until
+   an independent maintainer exists.
+6. Enable repository-native auto-merge. Agent PRs may then opt into native auto-merge; GitHub will
    complete the rebase only when every active requirement is satisfied.
 
 Do not require `PR Governance` during step 2: the workflow does not yet exist on the trusted base
