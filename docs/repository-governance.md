@@ -90,13 +90,22 @@ release creation. That body remains tool-owned and is validated with the same up
 `release-please` 17.3.0 parser resolved by the pinned Release Please action. The exception is
 identity-, repository-, and branch-bound; the human PR-body validator is not weakened.
 
-The semantic-release job follows the permission profile documented by the pinned Release Please
-action: `contents: write`, `issues: write`, and `pull-requests: write`. Those permissions are
-scoped to that job. Release Please is also configured with `force-tag-creation: true`, so the
-release tag is created explicitly before GitHub Release creation. This keeps tag authority inside
-the pinned upstream release engine while avoiding any operator-created recovery tag or broader
-workflow-write credential. The downstream verified-asset publisher remains limited to
-`contents: write` so release orchestration authority is not inherited by artifact publication.
+The semantic-release job keeps its generated `GITHUB_TOKEN` at `contents: read`. Release
+mutation authority is supplied instead by a dedicated GitHub App installation token created with
+`actions/create-github-app-token` pinned by commit SHA. The action is intentionally invoked
+without `owner` or `repositories`, which scopes the installation token to the current repository.
+Its requested permissions are `contents: write`, `workflows: write`, `issues: write`, and
+`pull-requests: write`; the App itself must be installed only on JameFirewall with the same
+repository permissions.
+
+The App Client ID is supplied through `JAMEFIREWALL_RELEASE_APP_CLIENT_ID` as a repository
+variable and its private key through `JAMEFIREWALL_RELEASE_APP_PRIVATE_KEY` as a repository
+secret. Release Please consumes only the ephemeral installation token. The token action retains
+its default post-job revocation behavior and there is no fallback to `GITHUB_TOKEN` if App
+credentials are missing. Release Please remains configured with `force-tag-creation: true`, so
+the governed release tag is created explicitly before GitHub Release creation. The downstream
+verified-asset publisher remains isolated on `GITHUB_TOKEN` with `contents: write` and never
+receives the App credential or installation token.
 
 The in-repository validator is an enforcement adapter for this documented policy, not an
 independent source of engineering policy. `PR Governance`, once required by the host ruleset,
