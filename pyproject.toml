@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "jame-firewall"
 version = "0.2.0"
-description = "JameFirewall: Gestor profesional y unificado de reglas de Firewall de Windows para software y suites creativas."
+description = "Windows desktop application for managing application-specific Windows Defender Firewall rules."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
-authors = [{ name = "Roy", email = "roy@local" }]
+license = "GPL-3.0-or-later"
+authors = [{ name = "Roy Mejía", email = "roy@local" }]
 dependencies = [
     "ttkbootstrap>=1.20.1",
     "Pillow>=11.0.0",
