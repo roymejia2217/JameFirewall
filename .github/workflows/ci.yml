@@ -54,6 +54,74 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: bash scripts/validate_commit_range.sh
 
+  changelog:
+    name: Changelog Governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.19"
+          enable-cache: true
+
+      - name: Sync locked dependencies
+        run: uv sync --frozen --all-extras --python 3.11
+
+      - name: Self-test Towncrier rendering contract
+        run: bash scripts/test-changelog-governance.sh
+
+      - name: Self-test release changelog contract
+        run: uv run python scripts/validate_release_changelog.py --self-test
+
+      - name: Validate committed changelog structure
+        run: uv run python scripts/validate_release_changelog.py
+
+      - name: Validate changelog single-writer ownership
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          uv run python scripts/validate_changelog_ownership.py             --base-sha "$BASE_SHA"             --head-sha "$HEAD_SHA"             --pr-title "$PR_TITLE"             --pr-author "$PR_AUTHOR"             --head-branch "$HEAD_BRANCH"             --head-repository "$HEAD_REPOSITORY"             --repository "$REPOSITORY"
+
+      - name: Require Towncrier change evidence for non-Release Please pull request
+        if: >-
+          github.event_name == 'pull_request' &&
+          !(
+            github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            github.event.pull_request.head.ref ==
+              'release-please--branches--main--components--JameFirewall'
+          )
+        run: uv run towncrier check --compare-with "origin/${{ github.base_ref }}"
+
+      - name: Require consolidated changelog for Release Please
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login == 'github-actions[bot]' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.head.ref ==
+            'release-please--branches--main--components--JameFirewall'
+        run: uv run python scripts/validate_release_changelog.py --require-clean-fragments
+
   quality:
     name: Linux Quality
     runs-on: ubuntu-latest
@@ -244,19 +312,22 @@ jobs:
     timeout-minutes: 5
     needs:
       - commit-messages
+      - changelog
       - quality
       - windows-system
       - windows-package
 
     steps:
-      - name: Require commit, Linux, Windows system, and packaged runtime contracts
+      - name: Require commit, changelog, Linux, Windows system, and packaged runtime contracts
         env:
           COMMIT_MESSAGES_RESULT: ${{ needs.commit-messages.result }}
+          CHANGELOG_RESULT: ${{ needs.changelog.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           WINDOWS_SYSTEM_RESULT: ${{ needs.windows-system.result }}
           WINDOWS_PACKAGE_RESULT: ${{ needs.windows-package.result }}
         run: |
           test "$COMMIT_MESSAGES_RESULT" = "success"
+          test "$CHANGELOG_RESULT" = "success"
           test "$QUALITY_RESULT" = "success"
           test "$WINDOWS_SYSTEM_RESULT" = "success"
           test "$WINDOWS_PACKAGE_RESULT" = "success"

@@ -81,6 +81,7 @@ jobs:
             ci
             deps
             governance
+            release
           requireScope: true
 
       - name: Validate Release Please pull request title
