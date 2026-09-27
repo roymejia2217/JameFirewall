@@ -18,13 +18,10 @@ def test_release_please_precreates_release_tag() -> None:
     assert package.get("skip-github-release", False) is False
 
 
-def test_tag_first_release_keeps_builtin_token_boundary() -> None:
+def test_tag_first_release_uses_explicit_release_authority() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     release = workflow.split("  release-please:\n", 1)[1].split("  publish-windows:\n", 1)[0]
 
-    for permission in ("contents: write", "issues: write", "pull-requests: write"):
-        assert permission in release
-    assert "secrets.GITHUB_TOKEN" in release
-    for forbidden in ("workflows: write", "id-token: write", "actions: write"):
-        assert forbidden not in release
-    assert "create-github-app-token" not in release
+    assert "create-github-app-token" in release
+    assert "steps.release-app-token.outputs.token" in release
+    assert "token: ${{ secrets.GITHUB_TOKEN }}" not in release
