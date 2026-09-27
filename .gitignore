@@ -70,3 +70,6 @@ Thumbs.db
 
 # Crash logs
 crash_log.txt
+
+# Node development tooling
+node_modules/

@@ -21,25 +21,9 @@ if grep -rnI -E "class AdobeFirewallManager|APP_TITLE = \"Firewall Manager\"" sr
     exit 1
 fi
 
-echo "[5/5] Verificando Motor de Commitlint y Gobernanza de Commits..."
-commit_msg_file="$(git rev-parse --git-path COMMIT_EDITMSG)"
-backup_file="$(mktemp)"
-had_commit_msg=0
-if [ -f "$commit_msg_file" ]; then
-    cp "$commit_msg_file" "$backup_file"
-    had_commit_msg=1
-fi
-cleanup_commit_msg() {
-    if [ "$had_commit_msg" -eq 1 ]; then
-        cp "$backup_file" "$commit_msg_file"
-    else
-        rm -f "$commit_msg_file"
-    fi
-    rm -f "$backup_file"
-}
-trap cleanup_commit_msg EXIT
-printf '%s\n' "ci(ci): verify commitlint contract" > "$commit_msg_file"
-uv run pre-commit run commitlint --hook-stage commit-msg --commit-msg-filename "$commit_msg_file" > /dev/null
+echo "[5/5] Verificando Commitlint y Gobernanza de Commits..."
+npm ci --ignore-scripts --no-audit --no-fund > /dev/null
+npm run test:commitlint > /dev/null
 
 echo "=========================================================="
 echo ">>> QUALITY GATE SCORECARD: 100% APROBADO (RELEASE READY) <<<"

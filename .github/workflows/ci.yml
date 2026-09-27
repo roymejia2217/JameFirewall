@@ -15,6 +15,91 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  commit-messages:
+    name: Commit Message Governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install pinned Commitlint dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Self-test commit message contract
+        run: bash scripts/test-commitlint.sh
+
+      - name: Validate commit range with Commitlint
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login || '' }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          release_subject_regex='^chore\(main\): release [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          release_bot_email='41898282+github-actions[bot]@users.noreply.github.com'
+          release_branch='release-please--branches--main--components--JameFirewall'
+
+          validate_release_commit() {
+            local sha="$1"
+            local author_email
+            local subject
+
+            author_email="$(git show -s --format='%ae' "$sha")"
+            subject="$(git show -s --format='%s' "$sha")"
+
+            test "$author_email" = "$release_bot_email" || {
+              echo "Release commit author is not github-actions[bot]: $author_email" >&2
+              exit 1
+            }
+            [[ "$subject" =~ $release_subject_regex ]] || {
+              echo "Release commit subject is not canonical SemVer release metadata: $subject" >&2
+              exit 1
+            }
+
+            git show -s --format='%B' "$sha" |
+              npm exec --no -- commitlint --config commitlint.release.config.cjs --verbose
+          }
+
+          if [ "$EVENT_NAME" = "pull_request" ] &&
+             [ "$PR_AUTHOR" = "app/github-actions" ] &&
+             [ "$HEAD_REPOSITORY" = "$REPOSITORY" ] &&
+             [ "$HEAD_BRANCH" = "$release_branch" ]; then
+            mapfile -t release_commits < <(git rev-list --reverse "$BASE_SHA..$HEAD_SHA")
+            test "${#release_commits[@]}" -eq 1 || {
+              echo "Release Please PR must contain exactly one generated release commit." >&2
+              exit 1
+            }
+            validate_release_commit "${release_commits[0]}"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            author_email="$(git show -s --format='%ae' "$HEAD_SHA")"
+            subject="$(git show -s --format='%s' "$HEAD_SHA")"
+            if [ "$author_email" = "$release_bot_email" ] &&
+               [[ "$subject" =~ $release_subject_regex ]]; then
+              validate_release_commit "$HEAD_SHA"
+            else
+              npm exec --no -- commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+            fi
+          else
+            npm exec --no -- commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+          fi
+
   quality:
     name: Linux Quality
     runs-on: ubuntu-latest
@@ -53,11 +138,6 @@ jobs:
         run: |
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pull-request.md"
           uv run python scripts/validate_pr_description.py --body-file "$RUNNER_TEMP/pull-request.md"
-
-      - name: Validate pull request commit messages
-        if: github.event_name == 'pull_request'
-        run: |
-          uv run cz check --rev-range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
       - name: Validate formatting and lint
         run: |
@@ -209,17 +289,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - commit-messages
       - quality
       - windows-system
       - windows-package
 
     steps:
-      - name: Require Linux, Windows system, and packaged runtime contracts
+      - name: Require commit, Linux, Windows system, and packaged runtime contracts
         env:
+          COMMIT_MESSAGES_RESULT: ${{ needs.commit-messages.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           WINDOWS_SYSTEM_RESULT: ${{ needs.windows-system.result }}
           WINDOWS_PACKAGE_RESULT: ${{ needs.windows-package.result }}
         run: |
+          test "$COMMIT_MESSAGES_RESULT" = "success"
           test "$QUALITY_RESULT" = "success"
           test "$WINDOWS_SYSTEM_RESULT" = "success"
           test "$WINDOWS_PACKAGE_RESULT" = "success"
