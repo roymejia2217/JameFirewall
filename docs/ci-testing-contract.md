@@ -67,7 +67,15 @@ The release workflow repeats the quality and Windows acceptance boundary before 
 create a release. The Windows release preflight produces one candidate executable, validates it with
 the 7-Zip system E2E and Pester, records its SHA-256, and uploads it as an Actions artifact.
 
-The publication job downloads that exact candidate, recomputes and compares its SHA-256, and
-publishes it without rebuilding. Release asset upload does not use `--clobber`; an existing
-conflicting asset is a failure rather than an implicit overwrite. Manual workflow-dispatch
-publication is not an authorized release path.
+The publication job downloads that exact candidate, validates both the preflight SHA-256 and the
+artifact checksum manifest, and stages canonical release names without rebuilding. Release asset
+upload does not use `--clobber`; an existing conflicting asset is a failure rather than an implicit
+overwrite.
+
+Creating a release manually through `workflow_dispatch` is not an authorized release path. The
+separate `release-asset-recovery.yml` workflow is an exceptional repair boundary for an already
+existing release whose verified asset publication failed after release creation. It never rebuilds
+the executable. It accepts only a completed failed run of the canonical release workflow on
+`main`, binds that run to an exact source HEAD SHA, binds the existing release and tag to an exact
+target SHA, reuses the named `windows-release-candidate` artifact, revalidates the expected SHA-256,
+and refuses to replace an existing release asset.
