@@ -100,7 +100,14 @@ jobs:
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          uv run python scripts/validate_changelog_ownership.py             --base-sha "$BASE_SHA"             --head-sha "$HEAD_SHA"             --pr-title "$PR_TITLE"             --pr-author "$PR_AUTHOR"             --head-branch "$HEAD_BRANCH"             --head-repository "$HEAD_REPOSITORY"             --repository "$REPOSITORY"
+          uv run python -m scripts.validate_changelog_ownership \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --pr-title "$PR_TITLE" \
+            --pr-author "$PR_AUTHOR" \
+            --head-branch "$HEAD_BRANCH" \
+            --head-repository "$HEAD_REPOSITORY" \
+            --repository "$REPOSITORY"
 
       - name: Require Towncrier change evidence for non-Release Please pull request
         if: >-

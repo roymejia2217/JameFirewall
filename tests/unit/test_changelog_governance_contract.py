@@ -117,7 +117,8 @@ def test_changelog_single_writer_ownership_is_enforced() -> None:
     assert "ordinary pull requests must not edit CHANGELOG.md" in validator
     assert "release/changelog-" in validator
     assert "Release Please must not modify CHANGELOG.md" in validator
-    assert "scripts/validate_changelog_ownership.py" in workflow
+    assert "python -m scripts.validate_changelog_ownership" in workflow
+    assert "python scripts/validate_changelog_ownership.py" not in workflow
 
 
 def test_release_preparation_scope_is_explicit_in_commit_and_pr_profiles() -> None:
