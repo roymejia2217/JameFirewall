@@ -24,7 +24,15 @@ Create one active branch ruleset targeting the default branch with no bypass act
 Required protections:
 
 - Require a pull request before merging.
-- Require review from Code Owners for paths covered by `.github/CODEOWNERS`.
+- Preserve `.github/CODEOWNERS` as the explicit ownership map for critical surfaces.
+- Do not require Code Owner approval while the repository has a single maintainer whose GitHub
+  identity is also the author identity used by repository agents; GitHub forbids self-approval and
+  that configuration would deadlock native auto-merge rather than add an independent reviewer.
+- Keep GitHub's extra approval protection for unattributed Copilot pull requests enabled. This is
+  separate from Code Owner review and does not apply to the current agent PRs attributed to
+  `@roymejia2217`.
+- Keep the server-canonical `required_reviewers` collection explicitly empty until an independent
+  reviewing team is introduced.
 - Dismiss stale approvals when new commits affect governed paths.
 - Require status checks before merging.
 - Require branches to be up to date before merging.
@@ -37,6 +45,26 @@ Required protections:
 
 The required checks are intentionally aggregate job names. Internal job decomposition may evolve
 without weakening the repository-level merge contract.
+
+## Published agent branch ruleset
+
+A second active branch ruleset, `agent-branch-immutability`, targets every branch except the
+default branch and the exact Release Please branch. It has no bypass actors and contains only the
+`non_fast_forward` rule.
+
+This deliberately does not restrict branch deletion: merged topic branches must remain eligible for
+GitHub's automatic head-branch cleanup. It also does not require linear history on topic branches,
+because GitHub's native Update branch operation may merge the current base into a pull-request
+branch without rewriting already published commits.
+
+Commit governance distinguishes that synchronization merge structurally rather than by message.
+The merge must have exactly two parents, the base-side parent must belong to current protected-base
+history, and the stored tree must equal Git's own automatic merge tree. Normal commits continue
+through the pinned Commitlint profile.
+
+The Release Please branch is the only branch excluded by exact name because Release Please
+regenerates that automation-owned branch as release state changes. The exclusion does not apply to
+other agent or human branches.
 
 ## Pull request metadata policy
 
@@ -69,11 +97,13 @@ not the JameFirewall repository itself.
 That policy means public forks may inspect and fork the source, but only branches created by actors
 with push access to this repository are candidates for the automated merge path.
 
-Governance-critical paths are additionally covered by `.github/CODEOWNERS`. Changes to workflows,
-dependency policy, PyInstaller packaging, native Windows acceptance tests, or the governance
-contracts require approval from `@roymejia2217`. Ordinary product-code PRs do not acquire this
-manual-review requirement solely from CODEOWNERS and remain eligible for native auto-merge after
-their required checks pass.
+Governance-critical paths remain covered by `.github/CODEOWNERS` so ownership is explicit and
+future multi-maintainer review policy has a canonical source. While `@roymejia2217` is the sole
+maintainer and repository agents commit through that same GitHub identity, CODEOWNER review is not
+a merge requirement because it cannot provide an independent approval. Critical changes remain
+fail-closed behind the same trusted-base `PR Governance` and `Required CI` checks as every other
+merge candidate. If an independent maintainer is added, required CODEOWNER review can be enabled
+without changing the ownership map.
 
 ## Required CI
 
@@ -88,36 +118,13 @@ Windows lane includes:
 
 A successful package build by itself is never sufficient evidence for merge.
 
-## Visibility transition
+## Current host state
 
-Repository visibility must be changed before applying the intended GitHub Free public-repository
-ruleset profile. Apply and verify the protections immediately after the visibility transition and
-before any subsequent unprotected merge.
+The visibility/bootstrap migration is complete. The repository is public, repository-native
+auto-merge is enabled, and `main-protection` is the sole default-branch ruleset. Its live GitHub
+representation is required to match the checked-in JSON contract exactly before governance changes
+are promoted.
 
-Making the repository public exposes source history, Actions history, and Actions logs. The
-repository remains proprietary unless its license is changed separately; public visibility does not
-grant an open-source license by itself.
-
-
-## Bootstrap sequence for the current governance PR
-
-The final ruleset cannot require `PR Governance` until that check exists on the default branch and
-has reported successfully in the repository. GitHub requires a required status check to have run
-successfully in the repository recently before it can be selected as a required check.
-
-Use this one-time bootstrap sequence:
-
-1. Change repository visibility from private to public.
-2. Create a temporary active rule for the default branch that requires pull requests, linear
-   history, conversation resolution, strict `Required CI`, and blocks force pushes and deletion.
-3. Merge the current governance PR by rebase only after its latest `Required CI` is successful.
-4. Enable required CODEOWNERS review immediately after `.github/CODEOWNERS` reaches `main`.
-5. Open one ordinary same-repository agent PR so the trusted-base `PR Governance` workflow runs
-   from `main`.
-6. After `PR Governance` and `Required CI` both report success, import
-   `.github/rulesets/main-protection.json` and activate it.
-7. Enable repository-native auto-merge. Agent PRs may then opt into native auto-merge; GitHub will
-   complete the rebase only when every active requirement is satisfied.
-
-Do not require `PR Governance` during step 2: the workflow does not yet exist on the trusted base
-revision, so doing so would deadlock the bootstrap PR.
+The temporary `main-bootstrap-protection` ruleset has been retired. It must not be recreated as
+part of ordinary development. Future repository-policy changes use the same branch → pull request
+→ required checks → exact-head rebase-merge lifecycle as product changes.
