@@ -114,7 +114,7 @@ validate_range() {
 }
 
 if [ "$EVENT_NAME" = "pull_request" ] &&
-   [ "$PR_AUTHOR" = "app/github-actions" ] &&
+   [ "$PR_AUTHOR" = "github-actions[bot]" ] &&
    [ "$HEAD_REPOSITORY" = "$REPOSITORY" ] &&
    [ "$HEAD_BRANCH" = "$release_branch" ]; then
   mapfile -t release_commits < <(git rev-list --reverse "$BASE_SHA..$HEAD_SHA")
