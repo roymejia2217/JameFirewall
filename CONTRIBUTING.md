@@ -3,14 +3,42 @@
 JameFirewall treats contribution metadata as part of the engineering record, but it does not invent
 a private formatting system where an established convention already exists.
 
-## Pull request title
+## Commit messages
 
-Pull request titles and commit messages follow **Conventional Commits 1.0.0**. The repository
-validates pull request titles with `amannn/action-semantic-pull-request` and validates commit
-history separately. The allowed types and scopes are intentionally repository-specific extensions
-of that published convention.
+Commit messages follow **Conventional Commits 1.0.0** and are enforced by pinned Commitlint. The
+repository uses the conventional grammar rather than inventing headings inside commit bodies:
+
+```text
+type(scope): subject
+
+A meaningful body explaining the change.
+
+Optional-Trailer: value
+```
+
+JameFirewall deliberately uses a stricter Conventional Commits profile. Every human or agent
+commit requires a body of at least 20 characters, separated from the header by a blank line.
+Headers are limited to 72 characters and body/footer lines to 100 characters. Conventional types
+and the repository scope vocabulary are enforced by Commitlint. Trailers remain optional and, when
+present, require the conventional leading blank line.
+
+The commit body is prose, not a miniature pull-request template. Conventional Commits does not
+define `What`, `Why`, or other body headings, so the repository does not fabricate them. The
+body should explain context that is not already obvious from the subject and diff.
+
+Release Please is the only typed exception: its generated commit is header-only
+`chore(main): release <SemVer>`. CI may select the restricted release profile only when the pull
+request comes from the canonical Release Please branch in this repository and the commit author is
+`github-actions[bot]`. The normal profile still rejects the same header-only message from humans
+or agents.
 
 Reference: https://www.conventionalcommits.org/en/v1.0.0/
+
+## Pull request title
+
+Pull request titles use the Conventional Commits header grammar. The repository validates them
+with `amannn/action-semantic-pull-request`; unlike commits, PR titles do not have a commit body.
+The allowed title types and scopes are repository-specific extensions of the published convention.
 
 ## Pull request description
 
