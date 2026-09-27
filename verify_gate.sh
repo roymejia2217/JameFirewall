@@ -24,6 +24,7 @@ fi
 echo "[5/6] Verificando Commitlint y Gobernanza de Commits..."
 npm ci --ignore-scripts --no-audit --no-fund > /dev/null
 npm run test:commitlint > /dev/null
+npm run test:release-please-body > /dev/null
 bash scripts/test-commit-range.sh > /dev/null
 
 echo "[6/6] Verificando Towncrier y Gobernanza del Changelog..."

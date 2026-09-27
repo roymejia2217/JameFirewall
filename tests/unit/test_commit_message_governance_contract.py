@@ -36,10 +36,9 @@ def test_official_commitlint_dependencies_are_exactly_locked() -> None:
     package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
     lock = json.loads(PACKAGE_LOCK.read_text(encoding="utf-8"))
 
-    assert package["devDependencies"] == {
-        "@commitlint/cli": "21.2.2",
-        "@commitlint/config-conventional": "21.2.2",
-    }
+    dev_dependencies = package["devDependencies"]
+    assert dev_dependencies["@commitlint/cli"] == "21.2.2"
+    assert dev_dependencies["@commitlint/config-conventional"] == "21.2.2"
     packages = lock["packages"]
     assert packages["node_modules/@commitlint/cli"]["version"] == "21.2.2"
     assert packages["node_modules/@commitlint/config-conventional"]["version"] == "21.2.2"

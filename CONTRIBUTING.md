@@ -67,6 +67,12 @@ detail belongs inside those sections using paragraphs or lower-level headings.
 `Related issues` must be explicit; use GitHub closing keywords when applicable or write `None.`
 when no tracked issue exists.
 
+The canonical Release Please pull request is the only body-format exception. Its generated body is
+load-bearing input to Release Please and must not be rewritten into the human PR template.
+`PR Governance` recognizes that exception only for `github-actions[bot]`, the same repository, and
+the exact Release Please branch, then validates title/body consistency with the pinned upstream
+`release-please` 17.3.0 parser. Human and agent pull requests never receive this exception.
+
 ## What is not part of the PR body contract
 
 The body does not contain a manual release-type field, a self-attested quality checklist, or a
