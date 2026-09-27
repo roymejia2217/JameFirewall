@@ -21,11 +21,13 @@ assert_rejected() {
 
 valid_message=$'feat(ui): add canonical application icon\n\nUse the approved multi-resolution application identity in the Windows package.'
 valid_body_and_footer=$'fix(ci): preserve runtime evidence\n\nKeep the packaged runtime evidence attached to the protected Windows acceptance lane.\n\nRefs: #2'
+valid_release_prep=$'chore(release): prepare changelog 0.3.0\n\nConsolidate validated Towncrier fragments into the governed release changelog.'
 release_message='chore(main): release 0.2.0'
 long_body="$(printf 'x%.0s' {1..101})"
 
 printf '%s\n' "$valid_message" | commitlint
 printf '%s\n' "$valid_body_and_footer" | commitlint
+printf '%s\n' "$valid_release_prep" | commitlint
 
 assert_rejected 'missing body' 'feat(ui): add canonical application icon'
 assert_rejected 'body below minimum length' $'fix(ci): preserve evidence\n\nToo short.'
