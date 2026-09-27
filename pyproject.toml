@@ -24,6 +24,7 @@ dev = [
     "mypy>=1.14.0",
     "pre-commit>=4.1.0",
     "pyinstaller>=6.11.0",
+    "towncrier==26.9.0",
     "commitizen>=4.18.0",
 ]
 
@@ -129,3 +130,52 @@ version_files = [
     "src/jame_firewall/__init__.py:__version__",
     ".release-please-manifest.json:."
 ]
+
+
+# --- CHANGELOG GOVERNANCE (TOWNCRIER + KEEP A CHANGELOG) ---
+[tool.towncrier]
+package = "jame_firewall"
+package_dir = "src"
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+template = "changelog.d/towncrier-template.md"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## [{version}](https://github.com/roymejia2217/JameFirewall/releases/tag/v{version}) - {project_date}"
+issue_format = "[#{issue}](https://github.com/roymejia2217/JameFirewall/issues/{issue})"
+underlines = ["", "", ""]
+wrap = 100
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "deprecated"
+name = "Deprecated"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "security"
+name = "Security"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "internal"
+name = "Internal"
+showcontent = true

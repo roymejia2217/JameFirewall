@@ -110,3 +110,68 @@ history even though a topic branch may contain a structurally verified synchroni
 Release Please is excluded from the agent-branch immutability ruleset because it regenerates its
 canonical release branch as release state changes. That exclusion is exact to the Release Please
 branch; it is not a general automation bypass.
+
+
+## Changelog and release notes
+
+JameFirewall uses **Towncrier 26.9.0** as the sole renderer of `CHANGELOG.md`. The public changelog
+follows **Keep a Changelog 1.1.0** and Semantic Versioning. Release Please remains responsible for
+version proposals, tags, and GitHub Releases, but it is configured with `skip-changelog: true` and
+must not write or style `CHANGELOG.md`.
+
+Every ordinary pull request supplies exactly the change evidence Towncrier expects in
+`changelog.d/`. Public fragments use one of the Keep a Changelog categories:
+
+- `added`
+- `changed`
+- `deprecated`
+- `removed`
+- `fixed`
+- `security`
+
+Changes with no user-visible release-note impact still add an `internal` fragment. The repository
+Towncrier template deliberately excludes the `internal` category from generated public release
+notes. This preserves a mandatory per-PR changelog decision without publishing CI, governance, or
+test-maintenance noise.
+
+Fragments should describe observable product impact in plain English. They must not contain
+decorative emoji, generated marketing copy, commit-log narration, or implementation-only details.
+Use `towncrier create` when practical; orphan fragments beginning with `+` are valid when no
+tracked issue exists.
+
+A release is prepared in a dedicated pull request before the Release Please version PR is merged.
+That pull request uses branch `release/changelog-X.Y.Z` and title
+`chore(release): prepare changelog X.Y.Z`. The `release` scope exists only for this governed
+release-preparation lifecycle.
+
+Ordinary pull requests are not allowed to edit `CHANGELOG.md` directly. A release-preparation PR
+is the only recurring writer: it runs Towncrier against the proposed version, consumes all pending
+fragments, and commits only the resulting `CHANGELOG.md` plus fragment deletions. CI rejects a
+release-preparation PR that also changes source, configuration, the Towncrier template, or adds new
+fragments.
+
+The standard commands are:
+
+```bash
+git switch -c release/changelog-X.Y.Z
+uv run towncrier build --yes --version X.Y.Z --date YYYY-MM-DD
+uv run python scripts/validate_release_changelog.py --version X.Y.Z --require-clean-fragments
+```
+
+The subsequent Release Please PR is accepted only when its proposed version already has one
+validated changelog entry and no pending fragments remain. Release Please does not get an exception
+to generate or rewrite release notes.
+
+The generated public categories are ordered exactly as Keep a Changelog defines them:
+
+```text
+Added
+Changed
+Deprecated
+Removed
+Fixed
+Security
+```
+
+Do not hand-edit generated release sections to change their style. Correct the originating
+Towncrier fragments or configuration and regenerate the release entry instead.

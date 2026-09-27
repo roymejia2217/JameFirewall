@@ -36,6 +36,13 @@ repos:
           - "@commitlint/cli@21.2.2"
           - "@commitlint/config-conventional@21.2.2"
 
+  # Towncrier owns changelog fragment rendering and structure.
+  - repo: https://github.com/twisted/towncrier
+    rev: 12e95a9ecf4f6a8091e751238fb81144b37f064c # 26.9.0
+    hooks:
+      - id: towncrier-check
+        files: ^changelog\.d/
+
   - repo: https://github.com/rhysd/actionlint
     rev: 914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
     hooks:
