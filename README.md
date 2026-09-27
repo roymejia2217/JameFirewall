@@ -107,5 +107,7 @@ defect reports and project questions.
 
 ## License
 
-JameFirewall is proprietary software. No open-source license is granted by this
-repository.
+JameFirewall is licensed under the GNU General Public License version 3 or any
+later version (`GPL-3.0-or-later`).
+
+Copyright © 2026 Roy Mejía. See [LICENSE](LICENSE).
