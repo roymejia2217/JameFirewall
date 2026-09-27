@@ -188,6 +188,26 @@ jobs:
           mkdir -p artifacts
           uv run pytest -m "not windows_only" --cov=src/jame_firewall --cov-branch --junitxml=artifacts/pytest-linux.xml
 
+      - name: Enforce Standard Readme and remark-lint
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
+            --volume "$PWD:/JameFirewall" \
+            --workdir /JameFirewall \
+            docker.io/library/node:24.14.1-bookworm-slim@sha256:b506e7321f176aae77317f99d67a24b272c1f09f1d10f1761f2773447d8da26c \
+            sh -eu -c 'cd ci/readme-policy && NPM_CONFIG_IGNORE_SCRIPTS=true npm ci && cd ../.. && ci/readme-policy/node_modules/.bin/remark README.md --frail --rc-path ci/readme-policy/.remarkrc.json'
+
+      - name: Check README links
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --volume "$PWD:/JameFirewall:ro" \
+            --workdir /JameFirewall \
+            lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d \
+            --no-progress --root-dir . README.md
+
       - name: Upload Linux test evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
