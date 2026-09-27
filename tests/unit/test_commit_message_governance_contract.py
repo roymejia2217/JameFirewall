@@ -13,6 +13,7 @@ PACKAGE_LOCK = REPOSITORY_ROOT / "package-lock.json"
 PRE_COMMIT = REPOSITORY_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPOSITORY_ROOT / ".github/workflows/ci.yml"
 SELF_TEST = REPOSITORY_ROOT / "scripts/test-commitlint.sh"
+RANGE_VALIDATOR = REPOSITORY_ROOT / "scripts/validate_commit_range.sh"
 
 EXPECTED_HOOK_SHA = "1f1ac45c93d1c2ce36b71330252c489a5f4f2724"
 
@@ -77,6 +78,7 @@ def test_release_profile_is_narrower_than_the_normal_profile() -> None:
 
 def test_ci_uses_official_commitlint_for_the_complete_pr_range() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    validator = RANGE_VALIDATOR.read_text(encoding="utf-8")
 
     assert "commit-messages:" in workflow
     assert "name: Commit Message Governance" in workflow
@@ -84,21 +86,25 @@ def test_ci_uses_official_commitlint_for_the_complete_pr_range() -> None:
     assert "node-version: 24" in workflow
     assert "npm ci --ignore-scripts --no-audit --no-fund" in workflow
     assert "scripts/test-commitlint.sh" in workflow
-    assert "npm exec --no -- commitlint --from" in workflow
+    assert "bash scripts/validate_commit_range.sh" in workflow
     assert "github.event.pull_request.base.sha" in workflow
     assert "github.event.pull_request.head.sha" in workflow
+    assert "git rev-list --reverse" in validator
+    assert "npm exec --prefix" in validator
+    assert ".commitlintrc.json" in validator
     assert "uv run cz check --rev-range" not in workflow
 
 
 def test_release_please_exception_is_identity_and_branch_bound() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    validator = RANGE_VALIDATOR.read_text(encoding="utf-8")
 
     assert "PR_AUTHOR:" in workflow
-    assert "app/github-actions" in workflow
-    assert "release-please--branches--main--components--JameFirewall" in workflow
-    assert "41898282+github-actions[bot]@users.noreply.github.com" in workflow
-    assert "Release Please PR must contain exactly one generated release commit." in workflow
-    assert "--config commitlint.release.config.cjs" in workflow
+    assert "app/github-actions" in validator
+    assert "release-please--branches--main--components--JameFirewall" in validator
+    assert "41898282+github-actions[bot]@users.noreply.github.com" in validator
+    assert "Release Please PR must contain exactly one generated release commit." in validator
+    assert "commitlint.release.config.cjs" in validator
 
 
 def test_required_ci_includes_commit_governance() -> None:
