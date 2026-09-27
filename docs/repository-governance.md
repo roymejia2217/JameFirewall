@@ -79,10 +79,16 @@ practice:
   related issues, and testing notes.
 - GitHub required status checks and rulesets are the actual merge-enforcement boundary.
 
-The body contract is therefore limited to `What`, `Why`, `Testing`, and `Related issues`.
-It deliberately excludes decorative emoji, numbered headings, self-attested quality checklists,
-manual release-type fields, and mandatory architecture/TDD prose. Those items either have no
-general standard or duplicate evidence already produced by CI and release tooling.
+The body contract is therefore limited to `What`, `Why`, `Testing`, and `Related issues` for
+human and agent pull requests. It deliberately excludes decorative emoji, numbered headings,
+self-attested quality checklists, manual release-type fields, and mandatory architecture/TDD
+prose. Those items either have no general standard or duplicate evidence already produced by CI
+and release tooling.
+
+Release Please is a typed exception because its generated pull-request body is parsed again during
+release creation. That body remains tool-owned and is validated with the same upstream
+`release-please` 17.3.0 parser resolved by the pinned Release Please action. The exception is
+identity-, repository-, and branch-bound; the human PR-body validator is not weakened.
 
 The in-repository validator is an enforcement adapter for this documented policy, not an
 independent source of engineering policy. `PR Governance`, once required by the host ruleset,

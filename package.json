@@ -3,10 +3,12 @@
   "private": true,
   "description": "Repository development tooling for JameFirewall",
   "scripts": {
-    "test:commitlint": "bash scripts/test-commitlint.sh"
+    "test:commitlint": "bash scripts/test-commitlint.sh",
+    "test:release-please-body": "node scripts/validate_release_please_pr.cjs --self-test"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
-    "@commitlint/config-conventional": "21.2.2"
+    "@commitlint/config-conventional": "21.2.2",
+    "release-please": "17.3.0"
   }
 }
