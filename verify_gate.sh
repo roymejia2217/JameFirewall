@@ -24,6 +24,7 @@ fi
 echo "[5/5] Verificando Commitlint y Gobernanza de Commits..."
 npm ci --ignore-scripts --no-audit --no-fund > /dev/null
 npm run test:commitlint > /dev/null
+bash scripts/test-commit-range.sh > /dev/null
 
 echo "=========================================================="
 echo ">>> QUALITY GATE SCORECARD: 100% APROBADO (RELEASE READY) <<<"

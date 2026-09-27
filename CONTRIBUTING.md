@@ -87,3 +87,26 @@ Repository contribution metadata is written in English so public history remains
 searchable. The automated contract enforces the canonical English headings; prose quality and
 language remain review concerns because language-detection heuristics are not deterministic enough
 to be a merge gate.
+
+
+## Published branch lifecycle
+
+A published agent branch is append-only. After its first push, contributors and agents must not
+rewrite its history with `git push --force`, `git push --force-with-lease`, or an equivalent
+non-fast-forward update. GitHub enforces that rule remotely through the
+`agent-branch-immutability` ruleset; local hooks are not the authority.
+
+If `main` advances while a pull request is open, use GitHub's native **Update branch** merge
+operation instead of rebasing the published branch. The resulting synchronization merge commit is
+accepted only when Git proves all of the following: it has exactly two parents, its second parent
+belongs to the current base history, and its tree is byte-for-byte identical to the automatic merge
+computed by `git merge-tree --write-tree`. Any manual content hidden inside that merge commit is
+rejected.
+
+Normal commits remain subject to the full Conventional Commits + Commitlint body contract. The
+final merge into `main` remains rebase-only, so the protected default branch preserves linear
+history even though a topic branch may contain a structurally verified synchronization merge.
+
+Release Please is excluded from the agent-branch immutability ruleset because it regenerates its
+canonical release branch as release state changes. That exclusion is exact to the Release Please
+branch; it is not a general automation bypass.

@@ -39,7 +39,10 @@ jobs:
       - name: Self-test commit message contract
         run: bash scripts/test-commitlint.sh
 
-      - name: Validate commit range with Commitlint
+      - name: Self-test commit range topology
+        run: bash scripts/test-commit-range.sh
+
+      - name: Validate commit range
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -49,56 +52,7 @@ jobs:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          release_subject_regex='^chore\(main\): release [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
-          release_bot_email='41898282+github-actions[bot]@users.noreply.github.com'
-          release_branch='release-please--branches--main--components--JameFirewall'
-
-          validate_release_commit() {
-            local sha="$1"
-            local author_email
-            local subject
-
-            author_email="$(git show -s --format='%ae' "$sha")"
-            subject="$(git show -s --format='%s' "$sha")"
-
-            test "$author_email" = "$release_bot_email" || {
-              echo "Release commit author is not github-actions[bot]: $author_email" >&2
-              exit 1
-            }
-            [[ "$subject" =~ $release_subject_regex ]] || {
-              echo "Release commit subject is not canonical SemVer release metadata: $subject" >&2
-              exit 1
-            }
-
-            git show -s --format='%B' "$sha" |
-              npm exec --no -- commitlint --config commitlint.release.config.cjs --verbose
-          }
-
-          if [ "$EVENT_NAME" = "pull_request" ] &&
-             [ "$PR_AUTHOR" = "app/github-actions" ] &&
-             [ "$HEAD_REPOSITORY" = "$REPOSITORY" ] &&
-             [ "$HEAD_BRANCH" = "$release_branch" ]; then
-            mapfile -t release_commits < <(git rev-list --reverse "$BASE_SHA..$HEAD_SHA")
-            test "${#release_commits[@]}" -eq 1 || {
-              echo "Release Please PR must contain exactly one generated release commit." >&2
-              exit 1
-            }
-            validate_release_commit "${release_commits[0]}"
-          elif [ "$EVENT_NAME" = "push" ]; then
-            author_email="$(git show -s --format='%ae' "$HEAD_SHA")"
-            subject="$(git show -s --format='%s' "$HEAD_SHA")"
-            if [ "$author_email" = "$release_bot_email" ] &&
-               [[ "$subject" =~ $release_subject_regex ]]; then
-              validate_release_commit "$HEAD_SHA"
-            else
-              npm exec --no -- commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
-            fi
-          else
-            npm exec --no -- commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
-          fi
+        run: bash scripts/validate_commit_range.sh
 
   quality:
     name: Linux Quality
