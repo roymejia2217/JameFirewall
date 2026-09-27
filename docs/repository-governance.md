@@ -90,6 +90,11 @@ release creation. That body remains tool-owned and is validated with the same up
 `release-please` 17.3.0 parser resolved by the pinned Release Please action. The exception is
 identity-, repository-, and branch-bound; the human PR-body validator is not weakened.
 
+The semantic-release job follows the permission profile documented by the pinned Release Please
+action: `contents: write`, `issues: write`, and `pull-requests: write`. Those permissions are
+scoped to that job. The downstream verified-asset publisher remains limited to `contents: write`
+so release orchestration authority is not inherited by artifact publication.
+
 The in-repository validator is an enforcement adapter for this documented policy, not an
 independent source of engineering policy. `PR Governance`, once required by the host ruleset,
 fails closed when the description contract is not satisfied.
