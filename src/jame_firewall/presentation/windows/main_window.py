@@ -6,12 +6,11 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
 from tkinter.constants import BOTH, END, RIGHT, YES, X
-from typing import Any
 
 import ttkbootstrap as ttk
 from ttkbootstrap.widgets.scrolled import ScrolledText
 
-from jame_firewall.core.entities import SystemStatus
+from jame_firewall.core.entities import StatusSnapshot, SystemStatus
 from jame_firewall.infrastructure.container import AppContainer
 from jame_firewall.presentation import constants as C
 from jame_firewall.presentation.queue_dispatcher import QueueDispatcher
@@ -79,7 +78,7 @@ class JameFirewallApp:
         self.status_label.pack(anchor="w")
 
         self.rule_count_label = ttk.Label(
-            status_container, text="", font=("Helvetica", 9), bootstyle="secondary"
+            status_container, text="", font=("Helvetica", 9), bootstyle="secondary", wraplength=320
         )
         self.rule_count_label.pack(anchor="w")
 
@@ -180,29 +179,40 @@ class JameFirewallApp:
 
     def _start_async_init(self) -> None:
         def worker() -> None:
-            is_admin = self._container.uac.is_admin()
-            self.dispatcher.post_log(C.MSG_ADMIN_CHECK, "info")
-            if is_admin:
-                self.dispatcher.post_log(C.MSG_ADMIN_OK, "ok")
-                snapshot = self._container.audit_use_case.execute()
-                self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
-            else:
-                self.dispatcher.post_log(C.MSG_NO_ADMIN, "warn")
-                self.dispatcher.post_ui_update(self._disable_buttons_no_admin)
+            try:
+                is_admin = self._container.uac.is_admin()
+                self.dispatcher.post_log(C.MSG_ADMIN_CHECK, "info")
+                if is_admin:
+                    self.dispatcher.post_log(C.MSG_ADMIN_OK, "ok")
+                    snapshot = self._container.audit_use_case.execute(
+                        self._container.config_use_case.get_directories()
+                    )
+                    self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
+                else:
+                    self.dispatcher.post_log(C.MSG_NO_ADMIN, "warn")
+                    self.dispatcher.post_ui_update(self._disable_buttons_no_admin)
+            except Exception as ex:
+                self._report_error(f"Error de auditoría inicial: {ex}")
 
         self.dispatcher.submit_background_task(worker)
 
-    def _update_status_ui(self, snapshot: Any) -> None:
+    def _update_status_ui(self, snapshot: StatusSnapshot) -> None:
+        self.rule_count_label.config(text=snapshot.detail)
         if snapshot.status == SystemStatus.PROTECTED:
             self.status_label.config(text=C.STATUS_PROTECTED, bootstyle="success")
-            self.rule_count_label.config(text=f"Reglas: {snapshot.rule_count}")
         elif snapshot.status == SystemStatus.UNPROTECTED:
             self.status_label.config(text=C.STATUS_UNPROTECTED, bootstyle="warning")
-            self.rule_count_label.config(text="0 reglas")
+        elif snapshot.status == SystemStatus.PARTIAL:
+            self.status_label.config(text=C.STATUS_PARTIAL, bootstyle="warning")
         elif snapshot.status == SystemStatus.NO_ADMIN_PRIVILEGES:
             self._disable_buttons_no_admin()
         else:
             self.status_label.config(text=C.STATUS_ERROR, bootstyle="danger")
+
+    def _report_error(self, message: str) -> None:
+        self.dispatcher.post_log(message, "err")
+        snapshot = StatusSnapshot(SystemStatus.ERROR, 0, message)
+        self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
 
     def _disable_buttons_no_admin(self) -> None:
         self._set_buttons_state("disabled")
@@ -214,11 +224,18 @@ class JameFirewallApp:
 
         def worker() -> None:
             try:
-                snapshot = self._container.audit_use_case.execute()
+                snapshot = self._container.audit_use_case.execute(
+                    self._container.config_use_case.get_directories()
+                )
                 self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
-                self.dispatcher.post_log("Estado actualizado exitosamente", "ok")
+                self.dispatcher.post_log(
+                    "Estado actualizado"
+                    if snapshot.status != SystemStatus.ERROR
+                    else snapshot.detail,
+                    "info" if snapshot.status != SystemStatus.ERROR else "err",
+                )
             except Exception as ex:
-                self.dispatcher.post_log(f"Error al actualizar: {ex}", "err")
+                self._report_error(f"Error al actualizar: {ex}")
             finally:
                 self.dispatcher.post_ui_update(lambda: self._set_buttons_state("normal"))
 
@@ -241,15 +258,21 @@ class JameFirewallApp:
                 )
 
                 summary = self._container.block_use_case.execute(dirs)
-                self.dispatcher.post_log(C.MSG_SUCCESS_BLOCK, "ok")
                 self.dispatcher.post_log(
-                    f"+{summary.blocked_count} bloqueados / Ignorados: {summary.skipped_count}",
-                    "ok",
+                    C.MSG_SUCCESS_BLOCK if not summary.failed_count else "Bloqueo incompleto",
+                    "ok" if not summary.failed_count else "err",
                 )
-                snapshot = self._container.audit_use_case.execute()
+                self.dispatcher.post_log(
+                    f"+{summary.blocked_count} bloqueados / Omitidos: {summary.skipped_count} / "
+                    f"Fallidos: {summary.failed_count}",
+                    "ok" if not summary.failed_count else "err",
+                )
+                snapshot = self._container.audit_use_case.execute(
+                    self._container.config_use_case.get_directories()
+                )
                 self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
             except Exception as ex:
-                self.dispatcher.post_log(f"Error de bloqueo: {ex}", "err")
+                self._report_error(f"Error de bloqueo: {ex}")
             finally:
                 self.dispatcher.post_ui_update(lambda: self._set_buttons_state("normal"))
 
@@ -269,12 +292,26 @@ class JameFirewallApp:
                     self.dispatcher.post_log(msg, lvl)
                 )
                 summary = self._container.unblock_use_case.execute()
-                self.dispatcher.post_log(C.MSG_SUCCESS_UNBLOCK, "ok")
-                self.dispatcher.post_log(f"-{summary.removed_count} reglas eliminadas", "ok")
-                snapshot = self._container.audit_use_case.execute()
+                self.dispatcher.post_log(
+                    C.MSG_SUCCESS_UNBLOCK if not summary.failed_count else "Desbloqueo incompleto",
+                    "ok" if not summary.failed_count else "err",
+                )
+                if summary.retained_legacy_count:
+                    self.dispatcher.post_log(
+                        f"{summary.retained_legacy_count} reglas antiguas conservadas. "
+                        "Revíselas en Windows Defender Firewall antes de eliminarlas.",
+                        "warn",
+                    )
+                self.dispatcher.post_log(
+                    f"-{summary.removed_count} reglas eliminadas / Fallidas: {summary.failed_count}",
+                    "ok" if not summary.failed_count else "err",
+                )
+                snapshot = self._container.audit_use_case.execute(
+                    self._container.config_use_case.get_directories()
+                )
                 self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
             except Exception as ex:
-                self.dispatcher.post_log(f"Error de desbloqueo: {ex}", "err")
+                self._report_error(f"Error de desbloqueo: {ex}")
             finally:
                 self.dispatcher.post_ui_update(lambda: self._set_buttons_state("normal"))
 

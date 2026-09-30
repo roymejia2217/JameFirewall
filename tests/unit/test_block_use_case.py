@@ -9,6 +9,7 @@ from tests.fakes.fake_uac import FakeUACAdapter
 
 from jame_firewall.core.entities import RuleDirection
 from jame_firewall.core.exceptions import PrivilegesRequiredError
+from jame_firewall.core.rule_identity import managed_rule_name
 from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
 
 
@@ -17,9 +18,15 @@ def test_block_executables_skips_already_blocked_and_blocks_new(
 ) -> None:
     # 1. Configurar regla previa
     fake_firewall.add_rule(
-        "photoshop jame-block", Path("C:/Adobe/photoshop.exe"), RuleDirection.OUT
+        managed_rule_name(Path("C:/Adobe/photoshop.exe"), RuleDirection.OUT),
+        Path("C:/Adobe/photoshop.exe"),
+        RuleDirection.OUT,
     )
-    fake_firewall.add_rule("photoshop jame-block", Path("C:/Adobe/photoshop.exe"), RuleDirection.IN)
+    fake_firewall.add_rule(
+        managed_rule_name(Path("C:/Adobe/photoshop.exe"), RuleDirection.IN),
+        Path("C:/Adobe/photoshop.exe"),
+        RuleDirection.IN,
+    )
 
     progress_events: list[tuple[str, str]] = []
 
@@ -42,7 +49,9 @@ def test_block_executables_skips_already_blocked_and_blocks_new(
     assert summary.blocked_count == 1
     assert summary.skipped_count == 1
     assert summary.failed_count == 0
-    assert fake_firewall.has_rule("illustrator jame-block")
+    assert fake_firewall.has_rule(
+        managed_rule_name(Path("C:/Adobe/illustrator.exe"), RuleDirection.OUT)
+    )
     assert any("+ illustrator" in msg for msg, _ in progress_events)
 
 

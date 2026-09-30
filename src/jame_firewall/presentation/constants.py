@@ -26,7 +26,8 @@ BTN_CANCEL = "CANCELAR"
 
 # --- MENSAJES DE ESTADO ---
 STATUS_LOADING = "Cargando..."
-STATUS_PROTECTED = "Habilitado"
+STATUS_PROTECTED = "Bloqueo configurado"
+STATUS_PARTIAL = "Bloqueo parcial o pendiente"
 STATUS_UNPROTECTED = "Deshabilitado"
 STATUS_ERROR = "Error"
 STATUS_REQ_ADMIN = "Sin Privilegios"
@@ -39,7 +40,7 @@ LOG_ERR = "[ FAIL ]"
 
 # --- TOOLTIPS ---
 TT_BLOCK = "Crea reglas de firewall para bloquear las rutas establecidas"
-TT_UNBLOCK = "Elimina todas las reglas creadas por JameFirewall (incluyendo legacy)"
+TT_UNBLOCK = "Elimina las reglas propias; conserva reglas antiguas para revisión"
 TT_REFRESH = "Verificar estado actual de las reglas"
 TT_CONFIG = "Gestionar rutas de búsqueda de ejecutables"
 

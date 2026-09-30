@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from jame_firewall.core.entities import RuleDirection
+from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection
 
 
 @runtime_checkable
@@ -23,12 +23,12 @@ class FirewallPort(Protocol):
         """Crea una regla de bloqueo de tráfico."""
         ...
 
-    def delete_rule(self, rule_name: str) -> bool:
-        """Elimina una regla por nombre."""
+    def delete_rule(self, rule: FirewallRule) -> bool:
+        """Elimina una regla propia por identidad y atributos verificados."""
         ...
 
-    def list_rules_with_suffix(self, suffix: str) -> list[str]:
-        """Lista todas las reglas registradas que contienen el sufijo especificado."""
+    def list_inventory(self, suffixes: list[str]) -> FirewallInventory:
+        """Consulta reglas y política; lanza FirewallExecutionError ante un fallo."""
         ...
 
 

@@ -18,6 +18,7 @@ class SystemStatus(StrEnum):
     LOADING = "Cargando..."
     PROTECTED = "Habilitado"
     UNPROTECTED = "Deshabilitado"
+    PARTIAL = "Parcial"
     ERROR = "Error"
     NO_ADMIN_PRIVILEGES = "Sin Privilegios"
 
@@ -30,6 +31,20 @@ class FirewallRule:
     program_path: Path
     direction: RuleDirection
     action: str = "block"
+    display_name: str = ""
+    group: str = ""
+    enabled: bool = True
+    profiles: str = "Any"
+    effective: bool = True
+
+
+@dataclass(frozen=True)
+class FirewallInventory:
+    """Reglas locales y condiciones de aplicación de la política activa."""
+
+    rules: tuple[FirewallRule, ...]
+    profiles_enabled: bool = True
+    local_rules_allowed: bool = True
 
 
 @dataclass(frozen=True)
@@ -57,6 +72,7 @@ class UnblockSummary:
     removed_count: int
     failed_count: int
     errors: list[str] = field(default_factory=list)
+    retained_legacy_count: int = 0
 
 
 @dataclass(frozen=True)

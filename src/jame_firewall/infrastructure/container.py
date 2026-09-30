@@ -76,6 +76,7 @@ class AppContainer:
         )
 
         audit_uc = AuditFirewallStatusUseCase(
+            scanner=scanner,
             firewall=firewall,
             uac=uac,
             primary_suffix="jame-block",

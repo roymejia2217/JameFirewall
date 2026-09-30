@@ -55,6 +55,25 @@ paths, inspect the current managed-rule state, block detected executables, or
 remove rules previously created by JameFirewall. Blocking creates both inbound
 and outbound rules for each selected executable.
 
+Managed rules use a stable native identity for each normalized Windows program path
+and traffic direction, plus a dedicated `JameFirewall.v1` group. Repeating a block
+operation repairs incomplete or disabled managed rules. The result is checked
+against the observed firewall inventory after the operation.
+
+The status describes configured blocking for executables discovered in the current
+search directories. Complete blocking requires both enabled block rules, all firewall
+profiles enabled, local rules allowed, and matching rules in the active policy store.
+Partial coverage, policy restrictions, and query errors are displayed separately.
+This is a policy inspection; it does not perform a live network traffic test or
+certify coverage of files the directory scanner cannot discover.
+
+Rules from older versions (`<program> jame-block` or `<program> adobe-block`) are
+reported as pending review and retained when deactivating. Their display names do
+not establish ownership. Review their program paths and remove them explicitly in
+Windows Defender Firewall if they are no longer wanted; do not delete other rules
+based solely on matching text. Deactivation removes only verified rules in the new
+managed namespace and reports individual rules rather than unique display names.
+
 ## Architecture
 
 JameFirewall follows a Ports and Adapters architecture with explicit separation
