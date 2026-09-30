@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -54,13 +54,18 @@ def test_native_powershell_cannot_load_user_executable_or_module(
     assert Path(result["ModulePath"]).is_relative_to(trusted)
 
 
-def test_native_close_waits_for_worker_and_drops_late_ui_updates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(JameFirewallApp, "_start_async_init", lambda self: None)
+def test_native_close_waits_for_worker_and_drops_late_ui_updates() -> None:
+    # Closing the product terminates its process. Do not reinitialize Tk in pytest's interpreter.
+    code, output, error = SystemProcessRunner().run([sys.executable, str(Path(__file__).resolve())])
+    assert code == 0, error
+    assert "CLOSE_PROBE_OK" in output
+
+
+def _exercise_native_close() -> None:
     container = MagicMock(spec=AppContainer)
     container.cancellation = CancellationToken()
-    app = JameFirewallApp(container)
+    with patch.object(JameFirewallApp, "_start_async_init", lambda self: None):
+        app = JameFirewallApp(container)
     started = threading.Event()
     release = threading.Event()
     finished = threading.Event()
@@ -72,7 +77,8 @@ def test_native_close_waits_for_worker_and_drops_late_ui_updates(
         original_destroy()
         destroyed.set()
 
-    monkeypatch.setattr(app.root, "destroy", destroy)
+    destroy_patch = patch.object(app.root, "destroy", destroy)
+    destroy_patch.start()
 
     def worker() -> None:
         started.set()
@@ -101,3 +107,9 @@ def test_native_close_waits_for_worker_and_drops_late_ui_updates(
         app.dispatcher.shutdown(wait=True)
         if not destroyed.is_set():
             app.root.destroy()
+        destroy_patch.stop()
+
+
+if __name__ == "__main__":
+    _exercise_native_close()
+    print("CLOSE_PROBE_OK")
