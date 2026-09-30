@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from jame_firewall.core.entities import SystemStatus
+from jame_firewall.core.entities import RuleDirection, SystemStatus
+from jame_firewall.core.rule_identity import managed_rule_name
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
 from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
 from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
@@ -30,6 +31,10 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
     source_exe = Path(sys.executable)
     probe_exe = tmp_path / "jame-ci-probe.exe"
     shutil.copy2(source_exe, probe_exe)
+    for directory in ("A", "B"):
+        target = tmp_path / directory / "helper.exe"
+        target.parent.mkdir()
+        shutil.copy2(source_exe, target)
 
     suffix = f"jame-ci-{uuid.uuid4().hex[:12]}"
     runner = SystemProcessRunner()
@@ -45,6 +50,7 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
     audit = AuditFirewallStatusUseCase(
         firewall=firewall,
         uac=uac,
+        scanner=scanner,
         primary_suffix=suffix,
     )
     unblock = UnblockRulesUseCase(
@@ -55,18 +61,59 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
 
     try:
         block_summary = block.execute([tmp_path])
-        assert block_summary.blocked_count == 1
+        assert block_summary.blocked_count == 3
         assert block_summary.failed_count == 0
 
-        rules = firewall.list_rules_with_suffix(suffix)
-        assert rules == [f"{probe_exe.stem} {suffix}"]
+        inventory = firewall.list_inventory([suffix])
+        assert len(inventory.rules) == 6
+        assert {r.direction for r in inventory.rules} == set(RuleDirection)
 
-        snapshot = audit.execute()
+        snapshot = audit.execute([tmp_path])
         assert snapshot.status == SystemStatus.PROTECTED
-        assert snapshot.rule_count == 1
+        assert snapshot.rule_count == 6
+
+        inbound = managed_rule_name(probe_exe, RuleDirection.IN, suffix)
+        outbound = managed_rule_name(probe_exe, RuleDirection.OUT, suffix)
+        code, _, error = runner.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$ErrorActionPreference = 'Stop'; "
+                f"Remove-NetFirewallRule -Name '{inbound}' -PolicyStore PersistentStore; "
+                f"Disable-NetFirewallRule -Name '{outbound}' -PolicyStore PersistentStore; "
+                f"Set-NetFirewallRule -Name '{outbound}' -PolicyStore PersistentStore "
+                "-Protocol TCP -RemotePort 443",
+            ]
+        )
+        assert code == 0, error
+        assert audit.execute([tmp_path]).status == SystemStatus.PARTIAL
+        repaired = block.execute([tmp_path])
+        assert repaired.blocked_count == 1
+        assert repaired.skipped_count == 2
+        assert repaired.failed_count == 0
+        assert audit.execute([tmp_path]).status == SystemStatus.PROTECTED
+
+        # Una regla habilitada pero restringida tampoco acredita cobertura completa.
+        code, _, error = runner.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$ErrorActionPreference = 'Stop'; "
+                f"Set-NetFirewallRule -Name '{outbound}' -PolicyStore PersistentStore "
+                "-Protocol TCP -RemotePort 443",
+            ]
+        )
+        assert code == 0, error
+        assert audit.execute([tmp_path]).status == SystemStatus.PARTIAL
+        assert block.execute([tmp_path]).failed_count == 0
+        assert audit.execute([tmp_path]).status == SystemStatus.PROTECTED
     finally:
         unblock.execute()
 
-    final_snapshot = audit.execute()
+    final_snapshot = audit.execute([tmp_path])
     assert final_snapshot.status == SystemStatus.UNPROTECTED
     assert final_snapshot.rule_count == 0

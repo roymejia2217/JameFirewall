@@ -1,14 +1,15 @@
-"""Caso de uso para el desbloqueo y migración de reglas legacy del Firewall."""
+"""Caso de uso para el desbloqueo de reglas propias del Firewall."""
 
 from collections.abc import Callable
 
 from jame_firewall.core.entities import UnblockSummary
 from jame_firewall.core.exceptions import PrivilegesRequiredError
 from jame_firewall.core.ports import FirewallPort, UACPort
+from jame_firewall.core.rule_identity import is_legacy_rule, is_managed_rule
 
 
 class UnblockRulesUseCase:
-    """Orquesta la eliminación atómica de reglas oficiales y legacy."""
+    """Elimina reglas propias y conserva las antiguas para revisión."""
 
     def __init__(
         self,
@@ -25,38 +26,32 @@ class UnblockRulesUseCase:
         self._on_progress = on_progress
 
     def execute(self) -> UnblockSummary:
-        """Elimina todas las reglas asociadas a JameFirewall y sufijos anteriores."""
+        """Elimina identidades propias verificadas y comunica reglas antiguas retenidas."""
         if not self._uac.is_admin():
             raise PrivilegesRequiredError(
                 "Se requieren privilegios de administrador para eliminar reglas."
             )
 
-        # Recolectar reglas de todos los sufijos auditados
-        all_suffixes = [self._primary_suffix, *self._legacy_suffixes]
-        rules_to_delete: set[str] = set()
-
-        for suffix in all_suffixes:
-            found = self._firewall.list_rules_with_suffix(suffix)
-            rules_to_delete.update(found)
-
-        if not rules_to_delete:
-            return UnblockSummary(removed_count=0, failed_count=0)
-
-        removed = 0
-        failed = 0
+        suffixes = [self._primary_suffix, *self._legacy_suffixes]
+        inventory = self._firewall.list_inventory(suffixes)
+        owned = [rule for rule in inventory.rules if is_managed_rule(rule, self._primary_suffix)]
+        legacy_count = sum(is_legacy_rule(rule, suffixes) for rule in inventory.rules)
         errors: list[str] = []
-
-        for rule_name in sorted(rules_to_delete):
+        for rule in owned:
             if self._on_progress:
-                self._on_progress(f"- {rule_name}", "info")
-
-            if self._firewall.delete_rule(rule_name):
-                removed += 1
-            else:
-                failed += 1
-                err_msg = f"Error al eliminar la regla: {rule_name}"
-                errors.append(err_msg)
-                if self._on_progress:
-                    self._on_progress(err_msg, "err")
-
-        return UnblockSummary(removed_count=removed, failed_count=failed, errors=errors)
+                self._on_progress(f"- {rule.program_path} ({rule.direction})", "info")
+            self._firewall.delete_rule(rule)
+        remaining = self._firewall.list_inventory(suffixes) if owned else inventory
+        remaining_names = {rule.name for rule in remaining.rules}
+        failed_names = {rule.name for rule in owned if rule.name in remaining_names}
+        for name in sorted(failed_names):
+            errors.append(f"La regla sigue presente: {name}")
+        if self._on_progress:
+            for message in errors:
+                self._on_progress(message, "err")
+        return UnblockSummary(
+            removed_count=len(owned) - len(failed_names),
+            failed_count=len(failed_names),
+            errors=errors,
+            retained_legacy_count=legacy_count,
+        )

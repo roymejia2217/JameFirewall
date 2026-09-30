@@ -8,14 +8,19 @@ from tests.fakes.fake_uac import FakeUACAdapter
 
 from jame_firewall.core.entities import RuleDirection
 from jame_firewall.core.exceptions import PrivilegesRequiredError
+from jame_firewall.core.rule_identity import managed_rule_name
 from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
 
 
-def test_unblock_rules_cleans_both_current_and_legacy(
+def test_unblock_rules_removes_owned_and_retains_legacy(
     fake_firewall: InMemoryFirewallAdapter, fake_uac: FakeUACAdapter
 ) -> None:
     # Agregar regla con sufijo nuevo y regla con sufijo legacy
-    fake_firewall.add_rule("photoshop jame-block", Path("C:/photoshop.exe"), RuleDirection.OUT)
+    fake_firewall.add_rule(
+        managed_rule_name(Path("C:/photoshop.exe"), RuleDirection.OUT),
+        Path("C:/photoshop.exe"),
+        RuleDirection.OUT,
+    )
     fake_firewall.add_rule("afterfx adobe-block", Path("C:/afterfx.exe"), RuleDirection.OUT)
 
     events: list[tuple[str, str]] = []
@@ -29,11 +34,12 @@ def test_unblock_rules_cleans_both_current_and_legacy(
     )
 
     summary = use_case.execute()
-    assert summary.removed_count == 2
+    assert summary.removed_count == 1
+    assert summary.retained_legacy_count == 1
     assert summary.failed_count == 0
-    assert len(fake_firewall.list_rules_with_suffix("jame-block")) == 0
-    assert len(fake_firewall.list_rules_with_suffix("adobe-block")) == 0
-    assert len(events) == 2
+    assert fake_firewall.has_rule("afterfx adobe-block")
+    assert len(fake_firewall.rules) == 1
+    assert len(events) == 1
 
 
 def test_unblock_rules_empty(
@@ -50,7 +56,11 @@ def test_unblock_rules_empty(
 def test_unblock_rules_handles_deletion_failure(
     fake_firewall: InMemoryFirewallAdapter, fake_uac: FakeUACAdapter
 ) -> None:
-    fake_firewall.add_rule("photoshop jame-block", Path("C:/photoshop.exe"), RuleDirection.OUT)
+    fake_firewall.add_rule(
+        managed_rule_name(Path("C:/photoshop.exe"), RuleDirection.OUT),
+        Path("C:/photoshop.exe"),
+        RuleDirection.OUT,
+    )
     fake_firewall.delete_should_fail = True
 
     use_case = UnblockRulesUseCase(
@@ -59,7 +69,7 @@ def test_unblock_rules_handles_deletion_failure(
     )
     summary = use_case.execute()
     assert summary.failed_count == 1
-    assert len(summary.errors) == 1
+    assert summary.errors
 
 
 def test_unblock_rules_requires_admin(

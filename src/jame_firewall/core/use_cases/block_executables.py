@@ -1,4 +1,4 @@
-"""Caso de uso para el bloqueo transaccional de ejecutables en el Firewall."""
+"""Caso de uso para la reconciliación del bloqueo de ejecutables en el Firewall."""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -6,6 +6,12 @@ from pathlib import Path
 from jame_firewall.core.entities import BlockSummary, RuleDirection
 from jame_firewall.core.exceptions import PrivilegesRequiredError
 from jame_firewall.core.ports import DirectoryScannerPort, FirewallPort, UACPort
+from jame_firewall.core.rule_identity import (
+    covered_programs,
+    is_blocking_rule,
+    managed_rule_name,
+    program_key,
+)
 
 
 class BlockExecutablesUseCase:
@@ -32,50 +38,38 @@ class BlockExecutablesUseCase:
                 "Se requieren privilegios de administrador para crear reglas."
             )
 
-        # 1. Obtener reglas existentes para evitar duplicaciones
-        existing_rules = self._firewall.list_rules_with_suffix(self._suffix)
-        existing_base_names = {
-            r.replace(f" {self._suffix}", "").lower()
-            for r in existing_rules
-            if r.lower().endswith(f" {self._suffix}".lower())
+        inventory = self._firewall.list_inventory([self._suffix])
+        covered = covered_programs(inventory, self._suffix)
+        usable_names = {
+            rule.name for rule in inventory.rules if is_blocking_rule(rule, self._suffix)
         }
-
-        # 2. Escanear ejecutables
-        discovered_exes = self._scanner.find_executables(search_directories)
-        if not discovered_exes:
-            return BlockSummary(blocked_count=0, skipped_count=0, failed_count=0)
-
-        blocked = 0
-        skipped = 0
-        failed = 0
+        targets = {
+            program_key(path): path for path in self._scanner.find_executables(search_directories)
+        }
+        pending = {key: path for key, path in targets.items() if key not in covered}
         errors: list[str] = []
-
-        for exe_path in discovered_exes:
-            exe_name = exe_path.stem
-            if exe_name.lower() in existing_base_names:
-                skipped += 1
-                continue
-
-            rule_name = f"{exe_name} {self._suffix}"
+        for path in pending.values():
             if self._on_progress:
-                self._on_progress(f"+ {exe_name}", "info")
+                self._on_progress(f"+ {path.stem}", "info")
+            for direction in RuleDirection:
+                name = managed_rule_name(path, direction, self._suffix)
+                if name in usable_names:
+                    continue
+                self._firewall.add_rule(name, path, direction)
 
-            ok_out = self._firewall.add_rule(rule_name, exe_path, RuleDirection.OUT)
-            ok_in = self._firewall.add_rule(rule_name, exe_path, RuleDirection.IN)
-
-            if ok_out and ok_in:
-                blocked += 1
-                existing_base_names.add(exe_name.lower())
-            else:
-                failed += 1
-                err_msg = f"Error al crear reglas para: {exe_name}"
-                errors.append(err_msg)
+        # Un timeout no demuestra si hubo cambios: verificar el resultado observado.
+        if pending:
+            inventory = self._firewall.list_inventory([self._suffix])
+            covered = covered_programs(inventory, self._suffix)
+        for key, path in pending.items():
+            if key not in covered:
+                message = f"Bloqueo incompleto o no efectivo para: {path}"
+                errors.append(message)
                 if self._on_progress:
-                    self._on_progress(err_msg, "err")
-
+                    self._on_progress(message, "err")
         return BlockSummary(
-            blocked_count=blocked,
-            skipped_count=skipped,
-            failed_count=failed,
+            blocked_count=len(pending) - len(errors),
+            skipped_count=len(targets) - len(pending),
+            failed_count=len(errors),
             errors=errors,
         )

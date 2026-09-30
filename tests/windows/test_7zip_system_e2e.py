@@ -155,7 +155,10 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
             assert all(rule["Enabled"] == "True" for rule in rules), executable
 
         assert app.status_label.cget("text") == C.STATUS_PROTECTED
-        assert app.rule_count_label.cget("text") == f"Reglas: {len(expected_executables)}"
+        assert app.rule_count_label.cget("text") == (
+            f"Reglas: {2 * len(expected_executables)}; "
+            f"ejecutables cubiertos: {len(expected_executables)}/{len(expected_executables)}"
+        )
 
         app.unblock_button.invoke()
         _pump_until(

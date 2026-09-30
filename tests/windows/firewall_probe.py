@@ -8,6 +8,9 @@ from collections.abc import Collection, Iterable
 from pathlib import PurePath
 from typing import TypedDict, cast
 
+from jame_firewall.core.entities import RuleDirection
+from jame_firewall.core.rule_identity import managed_rule_name
+
 
 class FirewallRuleSnapshot(TypedDict):
     """Native firewall rule state relevant to the JameFirewall system contract."""
@@ -24,7 +27,11 @@ def managed_rule_names(
     suffix: str = "jame-block",
 ) -> tuple[str, ...]:
     """Derive the exact display names JameFirewall creates for executable paths."""
-    names = {f"{program.stem} {suffix}" for program in programs}
+    names = {
+        managed_rule_name(program, direction, suffix)
+        for program in programs
+        for direction in RuleDirection
+    }
     return tuple(sorted(names, key=str.casefold))
 
 
@@ -41,7 +48,7 @@ def build_probe_script(rule_names: Collection[str]) -> str:
 {literals}
 )
 $items = foreach ($name in $names) {{
-    $rules = @(Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue)
+    $rules = @(Get-NetFirewallRule -Name $name -ErrorAction SilentlyContinue)
     foreach ($rule in $rules) {{
         $filters = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $rule)
         foreach ($filter in $filters) {{

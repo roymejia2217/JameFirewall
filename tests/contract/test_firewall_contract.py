@@ -6,6 +6,7 @@ from tests.fakes.fake_firewall import InMemoryFirewallAdapter
 
 from jame_firewall.core.entities import RuleDirection
 from jame_firewall.core.ports import FirewallPort
+from jame_firewall.core.rule_identity import managed_rule_name
 
 
 def test_fake_firewall_satisfies_protocol() -> None:
@@ -16,18 +17,12 @@ def test_fake_firewall_satisfies_protocol() -> None:
 def test_firewall_port_lifecycle() -> None:
     adapter = InMemoryFirewallAdapter()
 
-    # 1. Agregar reglas
-    added_out = adapter.add_rule("app jame-block", Path("C:/app.exe"), RuleDirection.OUT)
-    added_in = adapter.add_rule("app jame-block", Path("C:/app.exe"), RuleDirection.IN)
-    assert added_out is True
-    assert added_in is True
-
-    # 2. Listar reglas
-    rules = adapter.list_rules_with_suffix("jame-block")
-    assert "app jame-block" in rules
-    assert len(rules) == 1
-
-    # 3. Eliminar regla
-    deleted = adapter.delete_rule("app jame-block")
-    assert deleted is True
-    assert len(adapter.list_rules_with_suffix("jame-block")) == 0
+    path = Path("C:/app.exe")
+    for direction in RuleDirection:
+        assert adapter.add_rule(managed_rule_name(path, direction), path, direction)
+    inventory = adapter.list_inventory(["jame-block"])
+    assert len(inventory.rules) == 2
+    assert {r.direction for r in inventory.rules} == set(RuleDirection)
+    for rule in inventory.rules:
+        assert adapter.delete_rule(rule)
+    assert not adapter.list_inventory(["jame-block"]).rules

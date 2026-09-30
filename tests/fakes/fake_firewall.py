@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
-from jame_firewall.core.entities import FirewallRule, RuleDirection
+from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection
+from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
 
 
 class InMemoryFirewallAdapter:
@@ -14,6 +16,8 @@ class InMemoryFirewallAdapter:
         self.add_should_fail: bool = False
         self.delete_should_fail: bool = False
         self.list_should_fail: bool = False
+        self.profiles_enabled = True
+        self.local_rules_allowed = True
 
     def add_rule(self, rule_name: str, program_path: Path, direction: RuleDirection) -> bool:
         if self.add_should_fail:
@@ -24,27 +28,36 @@ class InMemoryFirewallAdapter:
             program_path=program_path,
             direction=direction,
             action="block",
+            display_name=rule_name,
+            group=MANAGED_GROUP if ":v1:" in rule_name else "",
         )
         return True
 
-    def delete_rule(self, rule_name: str) -> bool:
+    def delete_rule(self, rule: FirewallRule) -> bool:
         if self.delete_should_fail:
             return False
-        keys_to_delete = [k for k in self.rules if k[0] == rule_name]
-        if not keys_to_delete:
+        suffix = rule.name.split(":v1:", 1)[0]
+        if rule.group != MANAGED_GROUP or rule.name != managed_rule_name(
+            rule.program_path, rule.direction, suffix
+        ):
             return False
-        for k in keys_to_delete:
-            del self.rules[k]
+        key = (rule.name, rule.direction.value)
+        if self.rules.get(key) != rule:
+            return False
+        del self.rules[key]
         return True
 
-    def list_rules_with_suffix(self, suffix: str) -> list[str]:
+    def list_inventory(self, suffixes: list[str]) -> FirewallInventory:
         if self.list_should_fail:
-            return []
-        matching_names: set[str] = set()
-        for rule_name, _ in self.rules:
-            if suffix in rule_name:
-                matching_names.add(rule_name)
-        return sorted(matching_names)
+            raise FirewallExecutionError("Inventory unavailable")
+        rules = tuple(
+            rule
+            for rule in self.rules.values()
+            if rule.group == MANAGED_GROUP
+            or any(rule.name.startswith(f"{s}:v1:") for s in suffixes)
+            or any(rule.display_name.casefold().endswith(f" {s}".casefold()) for s in suffixes)
+        )
+        return FirewallInventory(rules, self.profiles_enabled, self.local_rules_allowed)
 
     def has_rule(self, rule_name: str) -> bool:
         """Helper de verificación para aserciones de pruebas."""

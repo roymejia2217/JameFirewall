@@ -1,0 +1,1 @@
+Identify firewall rules by executable path and direction, repair incomplete managed blocks, and report partial coverage and query failures accurately. Retain older rules for explicit review instead of deleting rules by matching display names.
