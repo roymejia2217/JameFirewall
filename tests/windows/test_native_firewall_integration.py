@@ -23,6 +23,16 @@ pytestmark = [
 ]
 
 
+class NativeProbeRunner(SystemProcessRunner):
+    """Preserva errores del proveedor para diagnosticar fallos de aceptación."""
+
+    def run(self, args: list[str], timeout: float | None = 30.0) -> tuple[int, str, str]:
+        result = super().run(args, timeout)
+        if result[0] != 0:
+            print("Firewall provider failure:", result[2])
+        return result
+
+
 def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) -> None:
     """Exercise scan -> netsh IN/OUT rules -> audit -> cleanup on an ephemeral rule namespace."""
     uac = WindowsUACAdapter()
@@ -37,7 +47,7 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
         shutil.copy2(source_exe, target)
 
     suffix = f"jame-ci-{uuid.uuid4().hex[:12]}"
-    runner = SystemProcessRunner()
+    runner = NativeProbeRunner()
     firewall = WindowsNetshAdapter(runner=runner)
     scanner = OSFileSystemAdapter()
 
@@ -61,10 +71,9 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
 
     try:
         block_summary = block.execute([tmp_path])
-        assert block_summary.blocked_count == 3
-        assert block_summary.failed_count == 0
-
         inventory = firewall.list_inventory([suffix])
+        assert block_summary.blocked_count == 3, inventory
+        assert block_summary.failed_count == 0, inventory
         assert len(inventory.rules) == 6
         assert {r.direction for r in inventory.rules} == set(RuleDirection)
 
