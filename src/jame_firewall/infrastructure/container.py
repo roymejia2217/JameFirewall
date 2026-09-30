@@ -1,8 +1,9 @@
 """Contenedor de Inyección de Dependencias y Composition Root para JameFirewall."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from jame_firewall.core.cancellation import CancellationToken
 from jame_firewall.core.ports import (
     ConfigRepositoryPort,
     DirectoryScannerPort,
@@ -43,13 +44,16 @@ class AppContainer:
     config_use_case: ManageConfigDirectoriesUseCase
     audit_use_case: AuditFirewallStatusUseCase
 
+    cancellation: CancellationToken = field(default_factory=CancellationToken)
+
     @classmethod
     def create_production(cls, config_path: Path | None = None) -> "AppContainer":
         """Construye y cablea el grafo de dependencias para producción."""
-        runner = SystemProcessRunner()
+        cancellation = CancellationToken()
+        runner = SystemProcessRunner(cancellation=cancellation)
         uac = WindowsUACAdapter()
         firewall = WindowsNetshAdapter(runner=runner)
-        scanner = OSFileSystemAdapter()
+        scanner = OSFileSystemAdapter(cancellation=cancellation)
         registry = WindowsRegistryAdapter()
         config_repo = JsonConfigAdapter(config_path=config_path)
 
@@ -84,6 +88,7 @@ class AppContainer:
         )
 
         return cls(
+            cancellation=cancellation,
             process_runner=runner,
             firewall=firewall,
             directory_scanner=scanner,

@@ -31,8 +31,14 @@ class BlockExecutablesUseCase:
         self._suffix = primary_suffix
         self._on_progress = on_progress
 
-    def execute(self, search_directories: list[Path]) -> BlockSummary:
+    def execute(
+        self,
+        search_directories: list[Path],
+        *,
+        on_progress: Callable[[str, str], None] | None = None,
+    ) -> BlockSummary:
         """Ejecuta el proceso completo de escaneo y bloqueo de binarios."""
+        progress = on_progress if on_progress is not None else self._on_progress
         if not self._uac.is_admin():
             raise PrivilegesRequiredError(
                 "Se requieren privilegios de administrador para crear reglas."
@@ -49,8 +55,8 @@ class BlockExecutablesUseCase:
         pending = {key: path for key, path in targets.items() if key not in covered}
         errors: list[str] = []
         for path in pending.values():
-            if self._on_progress:
-                self._on_progress(f"+ {path.stem}", "info")
+            if progress:
+                progress(f"+ {path.stem}", "info")
             for direction in RuleDirection:
                 name = managed_rule_name(path, direction, self._suffix)
                 if name in usable_names:
@@ -65,8 +71,8 @@ class BlockExecutablesUseCase:
             if key not in covered:
                 message = f"Bloqueo incompleto o no efectivo para: {path}"
                 errors.append(message)
-                if self._on_progress:
-                    self._on_progress(message, "err")
+                if progress:
+                    progress(message, "err")
         return BlockSummary(
             blocked_count=len(pending) - len(errors),
             skipped_count=len(targets) - len(pending),

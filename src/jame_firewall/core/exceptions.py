@@ -19,3 +19,7 @@ class ConfigStorageError(JameFirewallError):
 
 class RegistryScanError(JameFirewallError):
     """Error al inspeccionar claves de instalación en el Registro de Windows."""
+
+
+class OperationCancelledError(JameFirewallError):
+    """El cierre interrumpió la operación antes del siguiente paso de I/O."""
