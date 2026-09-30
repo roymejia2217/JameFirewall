@@ -32,6 +32,7 @@ def rule_json() -> dict[str, Any]:
         "Enabled": True,
         "Profile": "Any",
         "Effective": True,
+        "EnforcementStates": ["ProfileInactive", "Enforced"],
     }
 
 
@@ -262,3 +263,30 @@ def test_delete_reports_provider_failure() -> None:
         group=MANAGED_GROUP,
     )
     assert not adapter.delete_rule(rule)
+
+
+@pytest.mark.parametrize(
+    ("states", "effective"),
+    [
+        (["ProfileInactive", "Enforced"], True),
+        (["Enforced"], True),
+        (["Full"], True),
+        (["ProfileInactive"], False),
+        ([], False),
+        (["Enforced", "LocalFirewallRulesDisallowed"], False),
+        (["Enforced", "DisabledObject"], False),
+        (["Unknown"], False),
+    ],
+)
+def test_inventory_checks_native_enforcement_states(states: list[str], effective: bool) -> None:
+    dto = {**rule_json(), "EnforcementStates": states}
+    adapter, _ = adapter_with_response(inventory_json([dto]))
+    assert adapter.list_inventory(["jame-block"]).rules[0].effective is effective
+
+
+@pytest.mark.parametrize("states", [None, "Enforced", {}, [1]])
+def test_inventory_rejects_invalid_enforcement_states(states: object) -> None:
+    dto = {**rule_json(), "EnforcementStates": states}
+    adapter, _ = adapter_with_response(inventory_json([dto]))
+    with pytest.raises(FirewallExecutionError):
+        adapter.list_inventory(["jame-block"])

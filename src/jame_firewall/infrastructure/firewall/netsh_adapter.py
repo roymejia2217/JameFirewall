@@ -73,19 +73,25 @@ $items = @(foreach ($r in $local) {
     if ($filter.Count -ne 1) { throw 'Incomplete application filter' }
     $program = [Environment]::ExpandEnvironmentVariables([string]$filter[0].Program)
     $effective = $false
+    $states = @()
     $a = $active[$r.Name]
     if ($null -ne $a) {
         $af = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $a)
         if ($af.Count -ne 1) { throw 'Incomplete active application filter' }
         $ap = [Environment]::ExpandEnvironmentVariables([string]$af[0].Program)
+        # NetSecurity exposes an array through the Value property on Windows PowerShell.
+        $enforcement = $a.EnforcementStatus
+        if ($null -ne $enforcement -and
+            $null -ne $enforcement.PSObject.Properties['Value']) {
+            $enforcement = $enforcement.Value
+        }
+        $states = @($enforcement | ForEach-Object { [string]$_ })
         $effective = (
             $a.Group -eq $group -and
             [string]$a.Enabled -eq 'True' -and
             [string]$a.Action -eq 'Block' -and
             [string]$a.Profile -eq 'Any' -and
             [string]$a.PrimaryStatus -eq 'OK' -and
-            @($a.EnforcementStatus).Count -gt 0 -and
-            @($a.EnforcementStatus | Where-Object { [string]$_ -notin @('Full', '1') }).Count -eq 0 -and
             (Test-Unrestricted $a $af[0]) -and
             $a.Direction -eq $r.Direction -and
             [string]::Equals($ap.Replace('/', '\'), $program.Replace('/', '\'),
@@ -98,6 +104,7 @@ $items = @(foreach ($r in $local) {
         Action = [string]$r.Action; Group = [string]$r.Group
         Enabled = ([string]$r.Enabled -eq 'True')
         Profile = [string]$r.Profile; Effective = [bool]$effective
+        EnforcementStates = @($states)
     }
 })
 [PSCustomObject]@{
@@ -216,6 +223,15 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         directions = {"Inbound": RuleDirection.IN, "Outbound": RuleDirection.OUT}
         if not item["Name"] or not item["Program"]:
             raise ValueError("Missing rule identity or program")
+        states: object = item["EnforcementStates"]
+        if not isinstance(states, list) or any(not isinstance(state, str) for state in states):
+            raise ValueError("Invalid enforcement states")
+        # Inactive profiles coexist with the enforced profile; rejection states never count.
+        enforced = bool(set(states) & {"Enforced", "Full"}) and set(states) <= {
+            "Enforced",
+            "Full",
+            "ProfileInactive",
+        }
         return FirewallRule(
             name=item["Name"],
             display_name=item["DisplayName"],
@@ -225,5 +241,5 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
             group=item["Group"],
             enabled=cls._boolean(item, "Enabled"),
             profiles=item["Profile"],
-            effective=cls._boolean(item, "Effective"),
+            effective=cls._boolean(item, "Effective") and enforced,
         )
