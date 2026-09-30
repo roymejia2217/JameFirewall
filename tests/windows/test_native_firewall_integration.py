@@ -72,6 +72,35 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
     try:
         block_summary = block.execute([tmp_path])
         inventory = firewall.list_inventory([suffix])
+        if block_summary.failed_count and inventory.rules:
+            name = inventory.rules[0].name
+            script = (
+                "$ErrorActionPreference = 'Stop'; "
+                f"$r = Get-NetFirewallRule -Name '{name}' -PolicyStore ActiveStore; "
+                "[PSCustomObject]@{"
+                "Rule = ($r | Select-Object Name, Enabled, Action, Profile, PrimaryStatus, "
+                "EnforcementStatus, Platform, RemoteDynamicKeywordAddresses, PolicyAppId); "
+                "Application = ($r | Get-NetFirewallApplicationFilter); "
+                "Port = ($r | Get-NetFirewallPortFilter); "
+                "Address = ($r | Get-NetFirewallAddressFilter); "
+                "Service = ($r | Get-NetFirewallServiceFilter); "
+                "Interface = ($r | Get-NetFirewallInterfaceFilter); "
+                "InterfaceType = ($r | Get-NetFirewallInterfaceTypeFilter); "
+                "Security = ($r | Get-NetFirewallSecurityFilter)"
+                "} | ConvertTo-Json -Depth 4 -Compress"
+            )
+            print(
+                "Native firewall scope:",
+                runner.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        script,
+                    ]
+                ),
+            )
         assert block_summary.blocked_count == 3, inventory
         assert block_summary.failed_count == 0, inventory
         assert len(inventory.rules) == 6
