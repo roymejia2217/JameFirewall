@@ -74,6 +74,17 @@ Windows Defender Firewall if they are no longer wanted; do not delete other rule
 based solely on matching text. Deactivation removes only verified rules in the new
 managed namespace and reports individual rules rather than unique display names.
 
+Operations run one at a time; activation, deactivation, refresh, and configuration
+remain unavailable until the current operation and its visual updates complete.
+Closing the window stops further commands and scanning, waits responsively for the
+command already in progress, and then releases the worker. Each command has a
+maximum configured timeout of 30 seconds. Operating-system process creation and a
+blocked filesystem call can delay shutdown beyond that deadline.
+
+Cancellation does not undo firewall changes already applied. Reopen the application
+to audit the resulting state and repair incomplete coverage. The activity log keeps
+a bounded recent history; older or excessive messages may be omitted.
+
 ## Architecture
 
 JameFirewall follows a Ports and Adapters architecture with explicit separation

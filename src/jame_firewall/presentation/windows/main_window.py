@@ -3,6 +3,7 @@
 import contextlib
 import sys
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox
 from tkinter.constants import BOTH, END, RIGHT, YES, X
@@ -32,6 +33,7 @@ class JameFirewallApp:
 
     def __init__(self, container: AppContainer) -> None:
         self._container = container
+        self._closing = False
         self.root = ttk.Window(themename=C.APP_THEME)
         self.root.title(C.APP_TITLE)
         self.root.geometry(C.APP_GEOMETRY)
@@ -168,7 +170,10 @@ class JameFirewallApp:
             tag = "err"
 
         self.log_text.text.insert(END, f"{prefix} ", "prefix")
-        self.log_text.text.insert(END, f"{message}\n", tag)
+        self.log_text.text.insert(END, f"{message[:4096]}\n", tag)
+        lines = int(self.log_text.text.index("end-1c").split(".")[0])
+        if lines > 2000:
+            self.log_text.text.delete("1.0", f"{lines - 2000 + 1}.0")
         self.log_text.text.see(END)
         self.log_text.text.config(state="disabled")
 
@@ -176,6 +181,22 @@ class JameFirewallApp:
         self.block_button.config(state=state)
         self.unblock_button.config(state=state)
         self.refresh_button.config(state=state)
+        self.config_button.config(state=state)
+
+    def _submit_operation(self, worker: Callable[[], None]) -> None:
+        if self._closing or self.dispatcher.is_busy:
+            return
+        self._set_buttons_state("disabled")
+        if not self.dispatcher.submit_background_task(worker, on_complete=self._finish_operation):
+            self._finish_operation()
+
+    def _finish_operation(self) -> None:
+        if self._closing:
+            return
+        if self._container.uac.is_admin():
+            self._set_buttons_state("normal")
+        else:
+            self._disable_buttons_no_admin()
 
     def _start_async_init(self) -> None:
         def worker() -> None:
@@ -194,7 +215,7 @@ class JameFirewallApp:
             except Exception as ex:
                 self._report_error(f"Error de auditoría inicial: {ex}")
 
-        self.dispatcher.submit_background_task(worker)
+        self._submit_operation(worker)
 
     def _update_status_ui(self, snapshot: StatusSnapshot) -> None:
         self.rule_count_label.config(text=snapshot.detail)
@@ -219,7 +240,8 @@ class JameFirewallApp:
         self.status_label.config(text=C.STATUS_REQ_ADMIN, bootstyle="danger")
 
     def _on_refresh_clicked(self) -> None:
-        self._set_buttons_state("disabled")
+        if self._closing or self.dispatcher.is_busy:
+            return
         self.dispatcher.post_log("Actualizando estado del firewall...", "info")
 
         def worker() -> None:
@@ -236,28 +258,24 @@ class JameFirewallApp:
                 )
             except Exception as ex:
                 self._report_error(f"Error al actualizar: {ex}")
-            finally:
-                self.dispatcher.post_ui_update(lambda: self._set_buttons_state("normal"))
 
-        self.dispatcher.submit_background_task(worker)
+        self._submit_operation(worker)
 
     def _on_block_clicked(self) -> None:
+        if self._closing or self.dispatcher.is_busy:
+            return
         if not self._container.uac.is_admin():
             messagebox.showerror("JameFirewall", "Se requieren privilegios de administrador.")
             return
-
-        self._set_buttons_state("disabled")
 
         def worker() -> None:
             try:
                 self.dispatcher.post_log(f"=== {C.BTN_BLOCK} ===", "info")
                 dirs = self._container.config_use_case.get_directories()
 
-                self._container.block_use_case._on_progress = lambda msg, lvl: (
-                    self.dispatcher.post_log(msg, lvl)
+                summary = self._container.block_use_case.execute(
+                    dirs, on_progress=self.dispatcher.post_log
                 )
-
-                summary = self._container.block_use_case.execute(dirs)
                 self.dispatcher.post_log(
                     C.MSG_SUCCESS_BLOCK if not summary.failed_count else "Bloqueo incompleto",
                     "ok" if not summary.failed_count else "err",
@@ -273,25 +291,22 @@ class JameFirewallApp:
                 self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
             except Exception as ex:
                 self._report_error(f"Error de bloqueo: {ex}")
-            finally:
-                self.dispatcher.post_ui_update(lambda: self._set_buttons_state("normal"))
 
-        self.dispatcher.submit_background_task(worker)
+        self._submit_operation(worker)
 
     def _on_unblock_clicked(self) -> None:
+        if self._closing or self.dispatcher.is_busy:
+            return
         if not self._container.uac.is_admin():
             messagebox.showerror("JameFirewall", "Se requieren privilegios de administrador.")
             return
 
-        self._set_buttons_state("disabled")
-
         def worker() -> None:
             try:
                 self.dispatcher.post_log(f"=== {C.BTN_UNBLOCK} ===", "info")
-                self._container.unblock_use_case._on_progress = lambda msg, lvl: (
-                    self.dispatcher.post_log(msg, lvl)
+                summary = self._container.unblock_use_case.execute(
+                    on_progress=self.dispatcher.post_log
                 )
-                summary = self._container.unblock_use_case.execute()
                 self.dispatcher.post_log(
                     C.MSG_SUCCESS_UNBLOCK if not summary.failed_count else "Desbloqueo incompleto",
                     "ok" if not summary.failed_count else "err",
@@ -312,12 +327,12 @@ class JameFirewallApp:
                 self.dispatcher.post_ui_update(lambda: self._update_status_ui(snapshot))
             except Exception as ex:
                 self._report_error(f"Error de desbloqueo: {ex}")
-            finally:
-                self.dispatcher.post_ui_update(lambda: self._set_buttons_state("normal"))
 
-        self.dispatcher.submit_background_task(worker)
+        self._submit_operation(worker)
 
     def _on_config_clicked(self) -> None:
+        if self._closing or self.dispatcher.is_busy:
+            return
         ConfigWindow(
             parent=self.root,
             manage_config_uc=self._container.config_use_case,
@@ -325,8 +340,23 @@ class JameFirewallApp:
         )
 
     def _on_close(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        self._set_buttons_state("disabled")
+        self.status_label.config(
+            text="Cerrando: esperando la operación en curso...", bootstyle="warning"
+        )
+        self._container.cancellation.cancel()
         self.dispatcher.shutdown()
-        self.root.destroy()
+        self._wait_for_close()
+
+    def _wait_for_close(self) -> None:
+        if self.dispatcher.is_idle:
+            self.dispatcher.shutdown(wait=True)
+            self.root.destroy()
+        else:
+            self.root.after(100, self._wait_for_close)
 
     def run(self) -> None:
         self.root.mainloop()

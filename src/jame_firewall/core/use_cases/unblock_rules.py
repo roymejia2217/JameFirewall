@@ -25,8 +25,13 @@ class UnblockRulesUseCase:
         self._legacy_suffixes = legacy_suffixes or []
         self._on_progress = on_progress
 
-    def execute(self) -> UnblockSummary:
+    def execute(
+        self,
+        *,
+        on_progress: Callable[[str, str], None] | None = None,
+    ) -> UnblockSummary:
         """Elimina identidades propias verificadas y comunica reglas antiguas retenidas."""
+        progress = on_progress if on_progress is not None else self._on_progress
         if not self._uac.is_admin():
             raise PrivilegesRequiredError(
                 "Se requieren privilegios de administrador para eliminar reglas."
@@ -38,17 +43,17 @@ class UnblockRulesUseCase:
         legacy_count = sum(is_legacy_rule(rule, suffixes) for rule in inventory.rules)
         errors: list[str] = []
         for rule in owned:
-            if self._on_progress:
-                self._on_progress(f"- {rule.program_path} ({rule.direction})", "info")
+            if progress:
+                progress(f"- {rule.program_path} ({rule.direction})", "info")
             self._firewall.delete_rule(rule)
         remaining = self._firewall.list_inventory(suffixes) if owned else inventory
         remaining_names = {rule.name for rule in remaining.rules}
         failed_names = {rule.name for rule in owned if rule.name in remaining_names}
         for name in sorted(failed_names):
             errors.append(f"La regla sigue presente: {name}")
-        if self._on_progress:
+        if progress:
             for message in errors:
-                self._on_progress(message, "err")
+                progress(message, "err")
         return UnblockSummary(
             removed_count=len(owned) - len(failed_names),
             failed_count=len(failed_names),

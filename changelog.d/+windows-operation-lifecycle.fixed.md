@@ -1,0 +1,1 @@
+Prevent overlapping firewall operations and configuration changes, stop further work on close, and wait responsively for the running command before exiting. Keep activity logs bounded and use the system Windows PowerShell executable and modules.
