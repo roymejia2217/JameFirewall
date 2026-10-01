@@ -33,6 +33,18 @@ class FirewallPort(Protocol):
         """Elimina una regla propia por identidad y atributos verificados."""
         ...
 
+    def add_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
+        """Apply bounded sequential batches; aligned results are not proof of effective policy.
+
+        Invalid identities raise before execution; incomplete processes abort subsequent batches.
+        Known per-rule failures return false. Already applied changes are never rolled back.
+        """
+        ...
+
+    def delete_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
+        """Remove revalidated owned rules in bounded batches with the same result contract."""
+        ...
+
     def list_inventory(self, suffixes: list[str]) -> FirewallInventory:
         """Consulta reglas y política; lanza FirewallExecutionError ante un fallo."""
         ...

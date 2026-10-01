@@ -33,7 +33,14 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    contract verifies that discovery leaves the Tk event loop responsive and that Cancel
    suppresses a worker's late result. Native process contracts require timeout, output
    overflow, cancellation and successful-parent completion to stop pipe-owning descendants.
-   Repeated runs check handle and thread retention.
+   Repeated runs check handle and thread retention. Native firewall batch contracts create
+   ten executable targets spanning three mutation batches, verify effective protection,
+   repeated activation without duplicates and complete deactivation. A separate collision
+   fixture requires a foreign rule to survive while adjacent owned operations succeed.
+   JUnit suite properties record the serial 40-process mutation baseline, the six-process
+   batch equivalent and elapsed times. Serial timing covers mutations only; batch full-cycle
+   timing also includes scans, inventories, repeated activation and follow-up audits. Timing
+   is diagnostic; command counts and observed policy are deterministic assertions.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
    Add control, verifies Cancel discards edits, injects a replacement failure through the real

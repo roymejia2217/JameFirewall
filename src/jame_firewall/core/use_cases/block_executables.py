@@ -3,11 +3,12 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from jame_firewall.core.entities import BlockSummary, RuleDirection
+from jame_firewall.core.entities import BlockSummary, FirewallRule, RuleDirection
 from jame_firewall.core.exceptions import PrivilegesRequiredError
 from jame_firewall.core.execution import check_operation_budget, operation_budget
 from jame_firewall.core.ports import DirectoryScannerPort, FirewallPort, UACPort
 from jame_firewall.core.rule_identity import (
+    MANAGED_GROUP,
     covered_programs,
     is_blocking_rule,
     managed_rule_name,
@@ -72,6 +73,7 @@ class BlockExecutablesUseCase:
         targets = {program_key(path): path for path in scan.executables}
         pending = {key: path for key, path in targets.items() if key not in covered}
         errors: list[str] = []
+        mutations: list[FirewallRule] = []
         for path in pending.values():
             if progress:
                 progress(f"+ {path.stem}", "info")
@@ -80,7 +82,10 @@ class BlockExecutablesUseCase:
                 if name in usable_names:
                     continue
                 check_operation_budget()
-                self._firewall.add_rule(name, path, direction)
+                mutations.append(FirewallRule(name, path, direction, group=MANAGED_GROUP))
+        if mutations:
+            check_operation_budget()
+            self._firewall.add_rules(mutations)
 
         # Un timeout no demuestra si hubo cambios: verificar el resultado observado.
         if pending:
