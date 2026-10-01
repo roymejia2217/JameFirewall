@@ -4,6 +4,7 @@ from pathlib import Path
 
 from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection
 from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.execution import check_operation_budget
 from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
 
 
@@ -46,6 +47,20 @@ class InMemoryFirewallAdapter:
             return False
         del self.rules[key]
         return True
+
+    def add_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
+        results = []
+        for rule in rules:
+            check_operation_budget()
+            results.append(self.add_rule(rule.name, rule.program_path, rule.direction))
+        return tuple(results)
+
+    def delete_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
+        results = []
+        for rule in rules:
+            check_operation_budget()
+            results.append(self.delete_rule(rule))
+        return tuple(results)
 
     def list_inventory(self, suffixes: list[str]) -> FirewallInventory:
         if self.list_should_fail:

@@ -140,6 +140,12 @@ including the audit following a mutation. Nested steps never reset that deadline
 Each command has a maximum timeout of 30 seconds, shortened to the operation time
 remaining. Commands retain at most 8 MiB of combined raw stdout/stderr; overflow is
 an explicit failure, and partial output is never accepted as a valid firewall inventory.
+Firewall mutations run sequentially in batches of at most eight rules, with an 8,000-byte
+quoted JSON payload limit measured in UTF-16. Each batch reads the local inventory once
+and re-fetches existing native identities before validating their group, program and
+direction. A failed rule does not authorize touching a foreign rule. Known failures are
+checked against the final inventory; an incomplete command or malformed result aborts
+later batches and requires refreshing the actual state. Applied changes are not rolled back.
 
 On Windows, a command starts suspended, is assigned to a private Job Object, and
 resumes only after containment succeeds. Only its standard I/O handles are inherited.

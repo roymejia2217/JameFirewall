@@ -217,8 +217,8 @@ def test_failed_inventory_prevents_block_mutations() -> None:
     block = BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter())
     with pytest.raises(FirewallExecutionError):
         block.execute([path.parent])
-    firewall.add_rule.assert_not_called()
-    firewall.delete_rule.assert_not_called()
+    firewall.add_rules.assert_not_called()
+    firewall.delete_rules.assert_not_called()
 
 
 def test_failed_inventory_prevents_unblock_mutations() -> None:
@@ -226,7 +226,7 @@ def test_failed_inventory_prevents_unblock_mutations() -> None:
     firewall.list_inventory.side_effect = FirewallExecutionError("Query unavailable")
     with pytest.raises(FirewallExecutionError):
         UnblockRulesUseCase(firewall, FakeUACAdapter()).execute()
-    firewall.delete_rule.assert_not_called()
+    firewall.delete_rules.assert_not_called()
 
 
 class TimedOutDeletionFirewall(InMemoryFirewallAdapter):
@@ -320,8 +320,8 @@ def test_incomplete_scan_prevents_all_firewall_mutations(found_paths: tuple[Path
     assert summary.blocked_count == 0
     assert summary.errors
     assert any("Escaneo incompleto" in message for message in summary.errors)
-    firewall.add_rule.assert_not_called()
-    firewall.delete_rule.assert_not_called()
+    firewall.add_rules.assert_not_called()
+    firewall.delete_rules.assert_not_called()
 
 
 def test_complete_scan_preserves_successful_block_result() -> None:
@@ -347,8 +347,8 @@ def test_resource_failure_stops_further_mutations_and_verification_queries(opera
         rules=rules if operation == "unblock" else ()
     )
     failure = FirewallExecutionError("Process TIMED_OUT; incomplete mutation")
-    firewall.add_rule.side_effect = failure
-    firewall.delete_rule.side_effect = failure
+    firewall.add_rules.side_effect = failure
+    firewall.delete_rules.side_effect = failure
     with pytest.raises(FirewallExecutionError, match="TIMED_OUT"):
         if operation == "block":
             BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter()).execute(
@@ -358,11 +358,11 @@ def test_resource_failure_stops_further_mutations_and_verification_queries(opera
             UnblockRulesUseCase(firewall, FakeUACAdapter()).execute()
     assert firewall.list_inventory.call_count == 1
     if operation == "block":
-        assert firewall.add_rule.call_count == 1
-        firewall.delete_rule.assert_not_called()
+        assert firewall.add_rules.call_count == 1
+        firewall.delete_rules.assert_not_called()
     else:
-        assert firewall.delete_rule.call_count == 1
-        firewall.add_rule.assert_not_called()
+        assert firewall.delete_rules.call_count == 1
+        firewall.add_rules.assert_not_called()
 
 
 def test_application_shutdown_cancellation_stops_next_fake_firewall_mutation() -> None:
@@ -372,13 +372,14 @@ def test_application_shutdown_cancellation_stops_next_fake_firewall_mutation() -
     path = Path("C:/Apps/helper.exe")
     committed: list[RuleDirection] = []
 
-    def mutation(_name: str, _path: Path, direction: RuleDirection) -> bool:
-        token.check()
-        committed.append(direction)
-        token.cancel()
-        return True
+    def mutation(rules: list[FirewallRule]) -> tuple[bool, ...]:
+        for rule in rules:
+            token.check()
+            committed.append(rule.direction)
+            token.cancel()
+        return (True,) * len(rules)
 
-    firewall.add_rule.side_effect = mutation
+    firewall.add_rules.side_effect = mutation
     with pytest.raises(OperationCancelledError):
         BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter()).execute(
             [path.parent]

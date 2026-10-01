@@ -58,8 +58,9 @@ class UnblockRulesUseCase:
         for rule in owned:
             if progress:
                 progress(f"- {rule.program_path} ({rule.direction})", "info")
+        if owned:
             check_operation_budget()
-            self._firewall.delete_rule(rule)
+            self._firewall.delete_rules(owned)
         check_operation_budget()
         remaining = self._firewall.list_inventory(suffixes) if owned else inventory
         remaining_names = {rule.name for rule in remaining.rules}

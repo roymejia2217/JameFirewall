@@ -80,26 +80,26 @@ def test_context_cleanup_on_exception_does_not_leak_deadline() -> None:
     assert remaining_operation_seconds() is None
 
 
-def test_block_stops_before_second_mutation_when_first_exhausts_shared_budget() -> None:
+def test_block_stops_before_verification_when_batch_exhausts_shared_budget() -> None:
     clock = FakeClock()
     path = Path("C:/Apps/helper.exe")
     firewall = MagicMock()
     firewall.list_inventory.return_value = FirewallInventory(rules=())
 
-    def slow_mutation(_name: str, _path: Path, _direction: RuleDirection) -> bool:
+    def slow_mutation(_rules: list[FirewallRule]) -> tuple[bool, ...]:
         clock.now = 10
-        return True
+        return (True, True)
 
-    firewall.add_rule.side_effect = slow_mutation
+    firewall.add_rules.side_effect = slow_mutation
     with operation_budget(10, clock=clock), pytest.raises(OperationDeadlineExceeded):
         BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter()).execute(
             [path.parent]
         )
-    assert firewall.add_rule.call_count == 1
+    assert firewall.add_rules.call_count == 1
     assert firewall.list_inventory.call_count == 1
 
 
-def test_unblock_stops_before_second_delete_when_first_exhausts_shared_budget() -> None:
+def test_unblock_stops_before_verification_when_batch_exhausts_shared_budget() -> None:
     clock = FakeClock()
     path = Path("C:/Apps/helper.exe")
     rules = tuple(
@@ -109,14 +109,14 @@ def test_unblock_stops_before_second_delete_when_first_exhausts_shared_budget() 
     firewall = MagicMock()
     firewall.list_inventory.return_value = FirewallInventory(rules=rules)
 
-    def slow_delete(_rule: FirewallRule) -> bool:
+    def slow_delete(_rules: list[FirewallRule]) -> tuple[bool, ...]:
         clock.now = 10
-        return True
+        return (True, True)
 
-    firewall.delete_rule.side_effect = slow_delete
+    firewall.delete_rules.side_effect = slow_delete
     with operation_budget(10, clock=clock), pytest.raises(OperationDeadlineExceeded):
         UnblockRulesUseCase(firewall, FakeUACAdapter()).execute()
-    assert firewall.delete_rule.call_count == 1
+    assert firewall.delete_rules.call_count == 1
     assert firewall.list_inventory.call_count == 1
 
 
@@ -135,7 +135,7 @@ def test_block_does_not_query_firewall_after_scan_exhausts_budget() -> None:
     with operation_budget(10, clock=clock), pytest.raises(OperationDeadlineExceeded):
         BlockExecutablesUseCase(firewall, scanner, FakeUACAdapter()).execute([path.parent])
     firewall.list_inventory.assert_not_called()
-    firewall.add_rule.assert_not_called()
+    firewall.add_rules.assert_not_called()
 
 
 def test_audit_expired_budget_never_queries_firewall_or_claims_protected() -> None:

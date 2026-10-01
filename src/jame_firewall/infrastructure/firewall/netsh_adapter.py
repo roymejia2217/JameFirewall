@@ -11,6 +11,7 @@ from jame_firewall.core.entities import (
     RuleDirection,
 )
 from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.execution import check_operation_budget
 from jame_firewall.core.ports import ProcessRunnerPort
 from jame_firewall.core.rule_identity import MANAGED_GROUP, is_managed_rule
 
@@ -135,6 +136,24 @@ if ($found.Count -eq 1) {
 """
 
 
+_BATCH_LIMIT = 8
+_PAYLOAD_LIMIT = 8000  # UTF-16 bytes after quoting; leaves room for script and runner prefix.
+_CREATE_SCRIPT = """
+if ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r | Out-Null }
+New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name `
+    -Group $group -Program $program -Direction $direction -Action Block `
+    -Enabled True -Profile Any -Protocol Any -LocalAddress Any -RemoteAddress Any `
+    -InterfaceType Any -Service Any | Out-Null
+"""
+_BATCH_LOOKUP = _LOOKUP_SCRIPT.replace(
+    "$found = @(Get-NetFirewallRule -PolicyStore PersistentStore | Where-Object { $_.Name -eq $name })",
+    # Snapshot absence never authorizes removal. Re-fetch existing objects before validation.
+    "$found = @($local | Where-Object { $_.Name -eq $name })\n"
+    "if ($found.Count -gt 0) {\n"
+    "    $found = @(Get-NetFirewallRule -PolicyStore PersistentStore -Name $name)\n}",
+)
+
+
 class WindowsNetshAdapter:
     """FirewallPort; NetSecurity conserva identidades y evita interpretar texto localizado."""
 
@@ -197,6 +216,96 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         )
         code, _, _ = self._run(script)
         return code == 0
+
+    def add_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
+        """Create or repair in bounded sequential batches; final inventory proves coverage."""
+        return self._mutate_rules(rules, delete=False)
+
+    def delete_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
+        """Delete only revalidated owned rules; incomplete execution aborts remaining batches."""
+        return self._mutate_rules(rules, delete=True)
+
+    def _mutate_rules(self, rules: list[FirewallRule], *, delete: bool) -> tuple[bool, ...]:
+        if len({r.name for r in rules}) != len(rules) or any(
+            not is_managed_rule(r, r.name.split(":v1:", 1)[0]) for r in rules
+        ):
+            raise FirewallExecutionError("Identidades de lote inválidas o duplicadas")
+        results: list[bool] = []
+        batch: list[FirewallRule] = []
+        for rule in rules:
+            check_operation_budget()
+            candidate = [*batch, rule]
+            if len(candidate) > _BATCH_LIMIT or self._payload_size(candidate) > _PAYLOAD_LIMIT:
+                if batch:
+                    results.extend(self._run_batch(batch, delete=delete))
+                    batch = []
+                check_operation_budget()
+                if self._payload_size([rule]) > _PAYLOAD_LIMIT:
+                    raise FirewallExecutionError("Ruta demasiado larga para el lote de firewall")
+            batch.append(rule)
+        if batch:
+            results.extend(self._run_batch(batch, delete=delete))
+        check_operation_budget()
+        return tuple(results)
+
+    @staticmethod
+    def _payload(rules: list[FirewallRule]) -> str:
+        return _literal(
+            json.dumps(
+                [
+                    {
+                        "Name": r.name,
+                        "Program": str(r.program_path),
+                        "Direction": "Inbound" if r.direction == RuleDirection.IN else "Outbound",
+                    }
+                    for r in rules
+                ],
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+        )
+
+    @classmethod
+    def _payload_size(cls, rules: list[FirewallRule]) -> int:
+        return len(cls._payload(rules).encode("utf-16-le"))
+
+    def _run_batch(self, rules: list[FirewallRule], *, delete: bool) -> list[bool]:
+        check_operation_budget()
+        action = (
+            "if ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r | Out-Null }"
+            if delete
+            else _CREATE_SCRIPT
+        )
+        script = (
+            f"$group = {_literal(MANAGED_GROUP)};\n"
+            f"$requests = ConvertFrom-Json {self._payload(rules)};\n"
+            "$local = @(Get-NetFirewallRule -PolicyStore PersistentStore);\n"
+            "$results = @(foreach ($request in $requests) {\n"
+            "$name = [string]$request.Name; $program = [string]$request.Program;\n"
+            "$direction = [string]$request.Direction; $success = $false;\n"
+            "try {\n" + _BATCH_LOOKUP + action + "\n$success = $true\n"
+            "} catch { $success = $false }\n"
+            "[PSCustomObject]@{ Name = $name; Succeeded = [bool]$success }\n"
+            "});\n[PSCustomObject]@{ Results = @($results) } | ConvertTo-Json -Depth 3 -Compress"
+        )
+        code, stdout, stderr = self._run(script)
+        if code != 0:
+            raise FirewallExecutionError(f"Lote de firewall incompleto: {stderr[:1024]}")
+        try:
+            raw: object = json.loads(stdout)
+            if not isinstance(raw, dict) or not isinstance(raw.get("Results"), list):
+                raise ValueError("Invalid batch schema")
+            items = raw["Results"]
+            if len(items) != len(rules):
+                raise ValueError("Incomplete batch results")
+            results = []
+            for rule, item in zip(rules, items, strict=True):
+                if not isinstance(item, dict) or item.get("Name") != rule.name:
+                    raise ValueError("Mismatched batch identity")
+                results.append(self._boolean(item, "Succeeded"))
+            return results
+        except (ValueError, KeyError, TypeError) as ex:
+            raise FirewallExecutionError("Respuesta de lote inválida; actualice el estado") from ex
 
     def list_inventory(self, suffixes: list[str]) -> FirewallInventory:
         """Lee reglas locales, presencia en ActiveStore y perfiles; falla de forma explícita."""
