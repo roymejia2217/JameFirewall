@@ -79,7 +79,9 @@ Describe "JameFirewall packaged Windows runtime" {
             $windowClass.ToString() | Should -Not -Be "#32770"
 
             $secondStart = Get-Date
-            Start-Process -FilePath $script:runtimeExe -WorkingDirectory (Split-Path $script:runtimeExe) | Out-Null
+            $duplicateLaunch = Start-Process -FilePath $script:runtimeExe -WorkingDirectory (Split-Path $script:runtimeExe) -PassThru
+            # Retain process handles before exit so Windows preserves their exit status.
+            $null = $duplicateLaunch.Handle
             $duplicateProcess = $null
             $deadline = (Get-Date).AddSeconds(30)
             do {
@@ -94,6 +96,7 @@ Describe "JameFirewall packaged Windows runtime" {
             } while ($null -eq $duplicateProcess -and (Get-Date) -lt $deadline)
 
             $duplicateProcess | Should -Not -BeNullOrEmpty
+            $null = $duplicateProcess.Handle
             $duplicateProcess.MainWindowTitle | Should -Be "JameFirewall - instancia activa"
             $dialogClass = [System.Text.StringBuilder]::new(256)
             [JameWindowProbe]::GetClassName($duplicateProcess.MainWindowHandle, $dialogClass, 256) |
@@ -123,6 +126,8 @@ Describe "JameFirewall packaged Windows runtime" {
             $sent | Should -Not -Be ([IntPtr]::Zero) -Because "BM_CLICK must succeed (Win32 error $messageError)"
             $duplicateProcess.WaitForExit(15000) | Should -BeTrue
             $duplicateProcess.ExitCode | Should -Be 0
+            $duplicateLaunch.WaitForExit(15000) | Should -BeTrue
+            $duplicateLaunch.ExitCode | Should -Be 0
             $windowProcess.Refresh()
             $windowProcess.HasExited | Should -BeFalse
 
