@@ -50,11 +50,11 @@ class ConfigRepositoryPort(Protocol):
     """Abstracción para la persistencia y lectura de directorios de búsqueda."""
 
     def load_paths(self) -> list[Path]:
-        """Carga las rutas configuradas con expansión de variables de entorno."""
+        """Load validated paths; missing uses defaults, invalid raises ConfigStorageError."""
         ...
 
     def save_paths(self, paths: list[Path]) -> bool:
-        """Persiste las rutas configuradas sustituyendo variables de entorno."""
+        """Replace the complete configuration; false preserves the previous file."""
         ...
 
 
