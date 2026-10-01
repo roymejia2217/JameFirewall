@@ -1,34 +1,13 @@
 BeforeAll {
     Add-Type -TypeDefinition @"
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class JameWindowProbe {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder name, int maximum);
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr GetDlgItem(IntPtr dialog, int controlId);
-    private delegate bool EnumWindowCallback(IntPtr window, IntPtr parameter);
-    [DllImport("user32.dll")]
-    private static extern bool EnumChildWindows(IntPtr parent, EnumWindowCallback callback, IntPtr parameter);
-    [DllImport("user32.dll")]
-    private static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr window, StringBuilder text, int maximum);
-    public static string DescribeChildren(IntPtr parent) {
-        var children = new List<string>();
-        EnumChildWindows(parent, (window, parameter) => {
-            var kind = new StringBuilder(256);
-            var text = new StringBuilder(256);
-            GetClassName(window, kind, 256);
-            GetWindowText(window, text, 256);
-            children.Add(String.Format("handle={0} id={1} class={2} text={3}",
-                window, GetDlgCtrlID(window), kind, text));
-            return true;
-        }, IntPtr.Zero);
-        return String.Join("; ", children);
-    }
+    public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string kind, string title);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr SendMessageTimeout(
         IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam,
@@ -120,12 +99,16 @@ Describe "JameFirewall packaged Windows runtime" {
             $deadline = (Get-Date).AddSeconds(5)
             do {
                 $duplicateProcess.Refresh()
-                $acceptButton = [JameWindowProbe]::GetDlgItem($duplicateProcess.MainWindowHandle, 1)
-                $controlError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                # MessageBox may use IDCANCEL for its sole OK button; IDs are not stable.
+                $acceptButton = [JameWindowProbe]::FindWindowEx(
+                    $duplicateProcess.MainWindowHandle, [IntPtr]::Zero, "Button", $null
+                )
                 if ($acceptButton -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 }
             } while ($acceptButton -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
-            $controls = [JameWindowProbe]::DescribeChildren($duplicateProcess.MainWindowHandle)
-            $acceptButton | Should -Not -Be ([IntPtr]::Zero) -Because "the notice must have an OK button (Win32 error $controlError; children: $controls)"
+            $acceptButton | Should -Not -Be ([IntPtr]::Zero)
+            [JameWindowProbe]::FindWindowEx(
+                $duplicateProcess.MainWindowHandle, $acceptButton, "Button", $null
+            ) | Should -Be ([IntPtr]::Zero)
             $messageResult = [UIntPtr]::Zero
             # BM_CLICK delivers the button notification expected by the native message box.
             $sent = [JameWindowProbe]::SendMessageTimeout(
