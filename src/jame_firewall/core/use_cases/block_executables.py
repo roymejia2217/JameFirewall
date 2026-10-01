@@ -44,14 +44,18 @@ class BlockExecutablesUseCase:
                 "Se requieren privilegios de administrador para crear reglas."
             )
 
+        scan = self._scanner.find_executables(search_directories)
+        if not scan.complete:
+            message = scan.detail + "; no se crearon reglas"
+            if progress:
+                progress(message, "err")
+            return BlockSummary(0, 0, 0, [message], scan_complete=False)
         inventory = self._firewall.list_inventory([self._suffix])
         covered = covered_programs(inventory, self._suffix)
         usable_names = {
             rule.name for rule in inventory.rules if is_blocking_rule(rule, self._suffix)
         }
-        targets = {
-            program_key(path): path for path in self._scanner.find_executables(search_directories)
-        }
+        targets = {program_key(path): path for path in scan.executables}
         pending = {key: path for key, path in targets.items() if key not in covered}
         errors: list[str] = []
         for path in pending.values():

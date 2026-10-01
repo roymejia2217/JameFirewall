@@ -54,7 +54,7 @@ class AppContainer:
         uac = WindowsUACAdapter()
         firewall = WindowsNetshAdapter(runner=runner)
         scanner = OSFileSystemAdapter(cancellation=cancellation)
-        registry = WindowsRegistryAdapter()
+        registry = WindowsRegistryAdapter(cancellation=cancellation)
         config_repo = JsonConfigAdapter(config_path=config_path)
 
         block_uc = BlockExecutablesUseCase(

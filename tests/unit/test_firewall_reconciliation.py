@@ -13,6 +13,8 @@ from jame_firewall.core.entities import (
     FirewallInventory,
     FirewallRule,
     RuleDirection,
+    ScanIssue,
+    ScanResult,
     StatusSnapshot,
     SystemStatus,
 )
@@ -25,7 +27,7 @@ from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
 
 def scanner_for(*paths: Path) -> MagicMock:
     scanner = MagicMock()
-    scanner.find_executables.return_value = list(paths)
+    scanner.find_executables.return_value = ScanResult(executables=tuple(paths))
     return scanner
 
 
@@ -271,3 +273,62 @@ def test_distinct_unicode_windows_paths_do_not_share_rule_identity() -> None:
     assert managed_rule_name(first, RuleDirection.OUT) != managed_rule_name(
         second, RuleDirection.OUT
     )
+
+
+def test_audit_with_covered_targets_and_scan_issue_reports_partial() -> None:
+    firewall = InMemoryFirewallAdapter()
+    path = Path("C:/AppA/helper.exe")
+    for direction in RuleDirection:
+        add_managed_rule(firewall, path, direction)
+    scanner = scanner_for(path)
+    scanner.find_executables.return_value = ScanResult(
+        executables=(path,), issues=(ScanIssue(Path("C:/AppA/private"), "Acceso denegado"),)
+    )
+    snapshot = AuditFirewallStatusUseCase(firewall, FakeUACAdapter(), scanner).execute(
+        [path.parent]
+    )
+    assert snapshot.status == SystemStatus.PARTIAL
+    assert "Escaneo incompleto" in snapshot.detail
+
+
+def test_audit_without_targets_and_scan_issue_does_not_report_unprotected() -> None:
+    scanner = scanner_for()
+    scanner.find_executables.return_value = ScanResult(
+        executables=(), issues=(ScanIssue(Path("C:/AppA"), "Acceso denegado"),)
+    )
+    snapshot = AuditFirewallStatusUseCase(
+        InMemoryFirewallAdapter(), FakeUACAdapter(), scanner
+    ).execute([Path("C:/AppA")])
+    assert snapshot.status == SystemStatus.PARTIAL
+    assert "Escaneo incompleto" in snapshot.detail
+
+
+@pytest.mark.parametrize("found_paths", [(), (Path("C:/AppA/helper.exe"),)])
+def test_incomplete_scan_prevents_all_firewall_mutations(found_paths: tuple[Path, ...]) -> None:
+    firewall = MagicMock()
+    firewall.list_inventory.return_value = FirewallInventory(rules=())
+    scanner = scanner_for()
+    scanner.find_executables.return_value = ScanResult(
+        executables=found_paths,
+        issues=(ScanIssue(Path("C:/AppA/private"), "Acceso denegado"),),
+    )
+    summary = BlockExecutablesUseCase(firewall, scanner, FakeUACAdapter()).execute(
+        [Path("C:/AppA")]
+    )
+    assert not summary.scan_complete
+    assert summary.blocked_count == 0
+    assert summary.errors
+    assert any("Escaneo incompleto" in message for message in summary.errors)
+    firewall.add_rule.assert_not_called()
+    firewall.delete_rule.assert_not_called()
+
+
+def test_complete_scan_preserves_successful_block_result() -> None:
+    path = Path("C:/AppA/helper.exe")
+    summary = BlockExecutablesUseCase(
+        InMemoryFirewallAdapter(), scanner_for(path), FakeUACAdapter()
+    ).execute([path.parent])
+    assert summary.scan_complete
+    assert summary.blocked_count == 1
+    assert summary.failed_count == 0
+    assert not summary.errors

@@ -203,3 +203,13 @@ def test_untrusted_storage_never_loads_or_overwrites_config(tmp_path: Path) -> N
         adapter.load_paths()
     assert not adapter.save_paths([tmp_path])
     assert config.read_bytes() == original
+
+
+def test_directory_links_remain_visible_to_the_scanner(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(outside, target_is_directory=True)
+    adapter = JsonConfigAdapter(tmp_path / "config.json")
+    assert adapter.save_paths([link])
+    assert adapter.load_paths() == [link.absolute()]

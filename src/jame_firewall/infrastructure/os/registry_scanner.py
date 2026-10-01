@@ -1,16 +1,60 @@
 """Descubrimiento automático de instalaciones en Registro de Windows y rutas estándar."""
 
 import os
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+from jame_firewall.core.cancellation import CancellationToken
+
+
+class DiscoveryError(RuntimeError):
+    """Discovery could not finish; callers must preserve their previous draft."""
 
 
 class WindowsRegistryAdapter:
     """Implementación de RegistryDiscoveryPort con inspección segura de Registro."""
 
+    def __init__(
+        self,
+        cancellation: CancellationToken | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._cancellation = cancellation or CancellationToken()
+        self._clock = clock
+
     def discover_creative_paths(self) -> list[Path]:
         """Detecta rutas de suites y software creativo instalado."""
         found_paths: set[Path] = set()
+        start = self._clock()
+        subkeys_seen = 0
+
+        def check() -> None:
+            self._cancellation.check()
+            if self._clock() - start >= 30.0:
+                raise DiscoveryError("Autodetección incompleta: límite de duración alcanzado")
+
+        def add(value: object) -> None:
+            check()
+            if not isinstance(value, str) or not value:
+                return
+            if len(value) > 32767:
+                raise DiscoveryError("Autodetección incompleta: ruta demasiado larga")
+            path = Path(os.path.abspath(value))
+            # Preserve reparse paths for the scanner's explicit validation.
+            if path.is_dir():
+                if path not in found_paths and len(found_paths) >= 256:
+                    raise DiscoveryError("Autodetección incompleta: límite de rutas alcanzado")
+                found_paths.add(path)
+
+        def registry_error(error: OSError) -> None:
+            if isinstance(error, FileNotFoundError) or getattr(error, "winerror", None) in (2, 3):
+                return
+            raise DiscoveryError("Autodetección incompleta: Registro inaccesible") from error
+
+        check()
 
         # 1. Búsqueda en Registro de Windows (HKLM y HKCU)
         try:
@@ -25,37 +69,35 @@ class WindowsRegistryAdapter:
             ]
 
             for hkey, subkey in registry_roots:
+                check()
                 try:
                     with reg.OpenKey(hkey, subkey) as root_key:
                         num_subkeys = reg.QueryInfoKey(root_key)[0]
+                        if subkeys_seen + num_subkeys > 4096:
+                            raise DiscoveryError(
+                                "Autodetección incompleta: límite de claves alcanzado"
+                            )
+                        subkeys_seen += num_subkeys
                         for i in range(num_subkeys):
-                            try:
-                                app_name = reg.EnumKey(root_key, i)
-                                app_key_path = f"{subkey}\\{app_name}"
-                                for potential in ["InstallPath", "AMS", "Setup"]:
-                                    full_sub = f"{app_key_path}\\{potential}"
-                                    try:
-                                        with reg.OpenKey(hkey, full_sub) as handle:
-                                            val, _ = reg.QueryValueEx(handle, "")
-                                            if val and isinstance(val, str) and os.path.exists(val):
-                                                found_paths.add(Path(val).resolve())
+                            check()
+                            app_name = reg.EnumKey(root_key, i)
+                            for potential in ("InstallPath", "AMS", "Setup"):
+                                check()
+                                full_sub = f"{subkey}\\{app_name}\\{potential}"
+                                try:
+                                    with reg.OpenKey(hkey, full_sub) as handle:
+                                        for name in ("", "Path"):
+                                            check()
                                             try:
-                                                val2, _ = reg.QueryValueEx(handle, "Path")
-                                                if (
-                                                    val2
-                                                    and isinstance(val2, str)
-                                                    and os.path.exists(val2)
-                                                ):
-                                                    found_paths.add(Path(val2).resolve())
-                                            except OSError:
-                                                pass
-                                    except OSError:
-                                        pass
-                            except OSError:
-                                continue
-                except OSError:
-                    pass
-        except (ImportError, AttributeError):
+                                                value, _ = reg.QueryValueEx(handle, name)
+                                                add(value)
+                                            except OSError as ex:
+                                                registry_error(ex)
+                                except OSError as ex:
+                                    registry_error(ex)
+                except OSError as ex:
+                    registry_error(ex)
+        except ImportError:
             pass
 
         # 2. Rutas estándar del sistema
@@ -78,7 +120,6 @@ class WindowsRegistryAdapter:
             candidates.append(Path(local_appdata) / "Adobe")
 
         for candidate in candidates:
-            if candidate.exists() and candidate.is_dir():
-                found_paths.add(candidate.resolve())
+            add(str(candidate))
 
         return sorted(found_paths)
