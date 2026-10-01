@@ -37,7 +37,9 @@ def test_find_executables_in_directory_tree(tmp_path: Path) -> None:
     (sub_dir / "child.exe").touch()
     (sub_dir / "lib.dll").touch()
 
-    exes = scanner.find_executables([app_dir])
+    scan = scanner.find_executables([app_dir])
+    assert scan.complete
+    exes = scan.executables
     names = {f.name.lower() for f in exes}
 
     assert len(exes) == 3

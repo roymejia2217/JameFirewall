@@ -13,6 +13,7 @@ import ttkbootstrap as ttk
 
 from jame_firewall.core.use_cases.manage_config import ManageConfigDirectoriesUseCase
 from jame_firewall.presentation import constants as C
+from jame_firewall.presentation.queue_dispatcher import QueueDispatcher
 
 
 class ConfigWindow(ttk.Toplevel):
@@ -23,10 +24,17 @@ class ConfigWindow(ttk.Toplevel):
         parent: Any,
         manage_config_uc: ManageConfigDirectoriesUseCase,
         on_saved_callback: Callable[[str], None] | None = None,
+        *,
+        dispatcher: QueueDispatcher,
+        on_busy_callback: Callable[[bool], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._manage_config_uc = manage_config_uc
         self._on_saved_callback = on_saved_callback
+        self._dispatcher = dispatcher
+        self._on_busy_callback = on_busy_callback
+        self._discovering = False
+        self._closed = False
 
         self.title(C.LBL_CONFIG_TITLE)
         self.geometry("520x420")
@@ -130,6 +138,8 @@ class ConfigWindow(ttk.Toplevel):
 
     def add_dir(self) -> None:
         """Selecciona y agrega un nuevo directorio asegurando importación de os/pathlib."""
+        if self._discovering or self._closed:
+            return
         path = filedialog.askdirectory(parent=self, title="Seleccionar directorio")
         if path:
             norm_path = os.path.normpath(path)
@@ -139,6 +149,8 @@ class ConfigWindow(ttk.Toplevel):
 
     def remove_dir(self) -> None:
         """Elimina el directorio seleccionado de la lista visual."""
+        if self._discovering or self._closed:
+            return
         selection = self.listbox.curselection()
         if selection:
             index = selection[0]
@@ -146,28 +158,63 @@ class ConfigWindow(ttk.Toplevel):
             self.current_dirs.remove(val)
             self.listbox.delete(index)
 
+    def _set_discovery_state(self, busy: bool) -> None:
+        self._discovering = busy
+        if self._closed:
+            return
+        for button in (self.btn_add, self.btn_remove, self.btn_auto, self.btn_save):
+            button.config(state="disabled" if busy else "normal")
+
+    def destroy(self) -> None:
+        self._closed = True
+        super().destroy()
+
     def auto_detect(self) -> None:
-        """Ejecuta auto-descubrimiento en Registro y actualiza la lista visual."""
-        updated_dirs = [
-            str(p)
-            for p in self._manage_config_uc.discover_directories(
-                [Path(d) for d in self.current_dirs]
-            )
-        ]
-        new_count = len(updated_dirs) - len(self.current_dirs)
+        """Discover off Tk; deliver only to a still-open draft through the shared dispatcher."""
+        if self._discovering or self._closed:
+            return
+        draft = [Path(d) for d in self.current_dirs]
+        self._set_discovery_state(True)
 
-        self.listbox.delete(0, END)
-        self.current_dirs = updated_dirs
-        for d in self.current_dirs:
-            self.listbox.insert(END, d)
+        def complete() -> None:
+            self._set_discovery_state(False)
+            if self._on_busy_callback is not None:
+                self._on_busy_callback(False)
 
-        if new_count > 0:
-            messagebox.showinfo("JameFirewall", f"{C.MSG_PATHS_FOUND} {new_count}")
+        def deliver(paths: list[Path] | None, error: str = "") -> None:
+            if self._closed:
+                return
+            self._set_discovery_state(False)
+            if paths is None:
+                messagebox.showerror("JameFirewall", error, parent=self)
+                return
+            new_count = len(paths) - len(draft)
+            self.current_dirs = [str(path) for path in paths]
+            self.listbox.delete(0, END)
+            for directory in self.current_dirs:
+                self.listbox.insert(END, directory)
+            message = f"{C.MSG_PATHS_FOUND} {new_count}" if new_count > 0 else C.MSG_NO_NEW_PATHS
+            messagebox.showinfo("JameFirewall", message, parent=self)
+
+        def worker() -> None:
+            try:
+                paths = self._manage_config_uc.discover_directories(draft)
+            except Exception as ex:
+                message = f"No se pudo completar la autodetección: {str(ex)[:1024]}"
+                self._dispatcher.post_ui_update(lambda: deliver(None, message))
+            else:
+                self._dispatcher.post_ui_update(lambda: deliver(paths))
+
+        if self._dispatcher.submit_background_task(worker, on_complete=complete):
+            if self._on_busy_callback is not None:
+                self._on_busy_callback(True)
         else:
-            messagebox.showinfo("JameFirewall", C.MSG_NO_NEW_PATHS)
+            self._set_discovery_state(False)
 
     def save_and_close(self) -> None:
         """Persiste los directorios mediante el caso de uso y cierra el modal."""
+        if self._discovering or self._closed:
+            return
         paths_to_save = [Path(d) for d in self.current_dirs]
         if not self._manage_config_uc.replace_directories(paths_to_save):
             messagebox.showerror(

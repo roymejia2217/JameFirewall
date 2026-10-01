@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection
+from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection, ScanResult
 
 
 @runtime_checkable
@@ -36,8 +36,8 @@ class FirewallPort(Protocol):
 class DirectoryScannerPort(Protocol):
     """Abstracción para escaneo del sistema de archivos y poda algorítmica."""
 
-    def find_executables(self, search_roots: list[Path]) -> list[Path]:
-        """Escanea recursivamente los directorios buscando binarios ejecutables (.exe)."""
+    def find_executables(self, search_roots: list[Path]) -> ScanResult:
+        """Return bounded targets and omissions together; cancellation raises."""
         ...
 
     def prune_redundant_paths(self, candidates: list[Path]) -> list[Path]:

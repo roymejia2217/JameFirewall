@@ -277,13 +277,15 @@ class JameFirewallApp:
                     dirs, on_progress=self.dispatcher.post_log
                 )
                 self.dispatcher.post_log(
-                    C.MSG_SUCCESS_BLOCK if not summary.failed_count else "Bloqueo incompleto",
-                    "ok" if not summary.failed_count else "err",
+                    C.MSG_SUCCESS_BLOCK
+                    if not summary.failed_count and summary.scan_complete
+                    else "Bloqueo incompleto",
+                    "ok" if not summary.failed_count and summary.scan_complete else "err",
                 )
                 self.dispatcher.post_log(
                     f"+{summary.blocked_count} bloqueados / Omitidos: {summary.skipped_count} / "
                     f"Fallidos: {summary.failed_count}",
-                    "ok" if not summary.failed_count else "err",
+                    "ok" if not summary.failed_count and summary.scan_complete else "err",
                 )
                 snapshot = self._container.audit_use_case.execute(
                     self._container.config_use_case.get_directories()
@@ -337,6 +339,10 @@ class JameFirewallApp:
             parent=self.root,
             manage_config_uc=self._container.config_use_case,
             on_saved_callback=lambda msg: self.append_log(msg, "ok"),
+            dispatcher=self.dispatcher,
+            on_busy_callback=lambda busy: (
+                self._set_buttons_state("disabled") if busy else self._finish_operation()
+            ),
         )
 
     def _on_close(self) -> None:

@@ -46,12 +46,15 @@ class AuditFirewallStatusUseCase:
             return StatusSnapshot(SystemStatus.ERROR, 0, str(ex))
         managed = [r for r in inventory.rules if is_managed_rule(r, self._primary_suffix)]
         legacy_count = sum(is_legacy_rule(r, suffixes) for r in inventory.rules)
-        targets = {program_key(path) for path in self._scanner.find_executables(search_directories)}
+        scan = self._scanner.find_executables(search_directories)
+        targets = {program_key(path) for path in scan.executables}
         covered = covered_programs(inventory, self._primary_suffix)
         count = len(managed)
         detail = f"Reglas: {count}; ejecutables cubiertos: {len(targets & covered)}/{len(targets)}"
         if legacy_count:
             detail += f"; reglas antiguas sin migrar: {legacy_count}"
+        if not scan.complete:
+            return StatusSnapshot(SystemStatus.PARTIAL, count, detail + "; " + scan.detail)
         if not inventory.profiles_enabled or not inventory.local_rules_allowed:
             return StatusSnapshot(
                 SystemStatus.PARTIAL, count, detail + "; la política impide el bloqueo completo"

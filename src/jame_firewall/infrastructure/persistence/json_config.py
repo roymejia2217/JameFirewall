@@ -103,16 +103,16 @@ class JsonConfigAdapter:
             Path(pf) / "Red Giant",
             Path(pdata) / "Adobe",
         ]
-        return [p.resolve() for p in defaults if p.exists()] or [Path(pf) / "Adobe"]
+        return [Path(os.path.abspath(p)) for p in defaults if p.exists()] or [Path(pf) / "Adobe"]
 
     def _sanitize_path_for_storage(self, path: Path) -> str:
         """Reemplaza raíces específicas del usuario con variables de entorno (%VAR%)."""
-        path_str = str(path.resolve())
+        path_str = os.path.abspath(path)
 
         for key in ENV_ROOTS:
             val = os.environ.get(key)
             if val:
-                val_resolved = str(Path(val).resolve())
+                val_resolved = os.path.abspath(val)
                 if os.path.normcase(path_str) == os.path.normcase(val_resolved) or os.path.normcase(
                     path_str
                 ).startswith(os.path.normcase(val_resolved + os.sep)):
@@ -138,7 +138,7 @@ class JsonConfigAdapter:
         path = Path(raw_str)
         if not path.is_absolute() or len(raw_str) > MAX_PATH_CHARS:
             raise ValueError("Directory must be an absolute path")
-        return path.resolve()
+        return Path(os.path.abspath(path))
 
     def _read_paths(self, path: Path) -> list[Path] | None:
         if not _check_regular_file(path):

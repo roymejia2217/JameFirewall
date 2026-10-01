@@ -1,6 +1,9 @@
 """Windows-native Tk/ttk UI contract tests executed with pytest."""
 
 import sys
+import time
+from pathlib import Path
+from threading import Event
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,7 +54,11 @@ def test_main_window_exposes_and_wires_primary_controls(monkeypatch: pytest.Monk
 
         manage_config = MagicMock()
         manage_config.get_directories.return_value = []
-        dialog = ConfigWindow(parent=app.root, manage_config_uc=manage_config)
+        dialog = ConfigWindow(
+            parent=app.root,
+            manage_config_uc=manage_config,
+            dispatcher=app.dispatcher,
+        )
         dialog.update_idletasks()
 
         assert dialog.title() == C.LBL_CONFIG_TITLE
@@ -61,9 +68,53 @@ def test_main_window_exposes_and_wires_primary_controls(monkeypatch: pytest.Monk
         assert dialog.btn_save.cget("text") == C.BTN_SAVE
         assert dialog.btn_cancel.cget("text") == C.BTN_CANCEL
 
-        dialog.btn_cancel.invoke()
-        app.root.update_idletasks()
-        assert dialog.winfo_exists() == 0
+        discovery_started = Event()
+        release_discovery = Event()
+        heartbeat = Event()
+
+        def slow_discovery(paths: list[Path]) -> list[Path]:
+            discovery_started.set()
+            assert release_discovery.wait(10), "discovery was never released"
+            return [*paths, Path("C:/discovered")]
+
+        manage_config.discover_directories.side_effect = slow_discovery
+        notice = MagicMock()
+        monkeypatch.setattr(
+            "jame_firewall.presentation.windows.config_window.messagebox.showinfo", notice
+        )
+        monkeypatch.setattr(
+            "jame_firewall.presentation.windows.config_window.messagebox.showerror", notice
+        )
+        try:
+            dialog.btn_auto.invoke()
+            deadline = time.monotonic() + 5
+            while not discovery_started.is_set() and time.monotonic() < deadline:
+                app.root.update()
+                time.sleep(0.01)
+            assert discovery_started.is_set()
+            assert str(dialog.btn_add.cget("state")) == "disabled"
+            assert str(dialog.btn_remove.cget("state")) == "disabled"
+            assert str(dialog.btn_auto.cget("state")) == "disabled"
+            assert str(dialog.btn_save.cget("state")) == "disabled"
+
+            app.root.after(0, heartbeat.set)
+            app.root.update()
+            assert heartbeat.is_set(), "Tk heartbeat stopped during registry discovery"
+            assert not release_discovery.is_set()
+
+            dialog.btn_cancel.invoke()
+            app.root.update_idletasks()
+            assert dialog.winfo_exists() == 0
+        finally:
+            release_discovery.set()
+            deadline = time.monotonic() + 5
+            while not app.dispatcher.is_idle and time.monotonic() < deadline:
+                app.root.update()
+                time.sleep(0.01)
+            assert app.dispatcher.is_idle
+            app.dispatcher.drain_queues()
+            app.dispatcher.shutdown(wait=True)
+        notice.assert_not_called()
     finally:
         app.dispatcher.shutdown()
         app.root.destroy()

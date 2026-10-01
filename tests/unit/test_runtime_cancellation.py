@@ -46,15 +46,20 @@ def test_scanning_stops_between_directories(
     token = CancellationToken()
     scanner = OSFileSystemAdapter(cancellation=token)
 
-    def walk(root: Path) -> object:
-        yield str(root), [], ["one.exe"]
-        token.cancel()
-        yield str(root), [], ["two.exe"]
-        pytest.fail("scan continued after cancellation")
+    first, second = MagicMock(), MagicMock()
+    first.path = str(tmp_path / "first.exe")
 
-    monkeypatch.setattr("os.walk", walk)
+    def cancel_on_stat(*args: object, **kwargs: object) -> object:
+        token.cancel()
+        return tmp_path.stat()
+
+    first.stat.side_effect = cancel_on_stat
+    read = MagicMock()
+    read.return_value.__enter__.return_value = iter([first, second])
+    monkeypatch.setattr("os.scandir", read)
     with pytest.raises(OperationCancelledError):
         scanner.find_executables([tmp_path])
+    second.stat.assert_not_called()
 
 
 def test_production_shares_cancellation_across_scan_and_processes(tmp_path: Path) -> None:
