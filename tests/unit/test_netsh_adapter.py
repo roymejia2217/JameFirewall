@@ -15,7 +15,13 @@ from jame_firewall.infrastructure.firewall.netsh_adapter import WindowsNetshAdap
 
 def inventory_json(rules: list[object] | None = None, **flags: bool) -> str:
     return json.dumps(
-        {"Rules": rules or [], "ProfilesEnabled": True, "LocalRulesAllowed": True, **flags},
+        {
+            "Complete": True,
+            "Rules": rules or [],
+            "ProfilesEnabled": True,
+            "LocalRulesAllowed": True,
+            **flags,
+        },
         ensure_ascii=False,
     )
 

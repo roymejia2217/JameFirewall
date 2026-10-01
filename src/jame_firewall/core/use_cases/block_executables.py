@@ -4,9 +4,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from jame_firewall.core.entities import BlockSummary, FirewallRule, RuleDirection
-from jame_firewall.core.exceptions import PrivilegesRequiredError
+from jame_firewall.core.exceptions import FirewallExecutionError, PrivilegesRequiredError
 from jame_firewall.core.execution import check_operation_budget, operation_budget
-from jame_firewall.core.ports import DirectoryScannerPort, FirewallPort, UACPort
+from jame_firewall.core.ports import (
+    MAX_INVENTORY_RULES,
+    DirectoryScannerPort,
+    FirewallPort,
+    UACPort,
+)
 from jame_firewall.core.rule_identity import (
     MANAGED_GROUP,
     covered_programs,
@@ -83,6 +88,13 @@ class BlockExecutablesUseCase:
                     continue
                 check_operation_budget()
                 mutations.append(FirewallRule(name, path, direction, group=MANAGED_GROUP))
+        if (
+            len({r.name for r in inventory.rules} | {r.name for r in mutations})
+            > MAX_INVENTORY_RULES
+        ):
+            raise FirewallExecutionError(
+                "Inventario previsto supera el límite de candidatos; no se crearon reglas"
+            )
         if mutations:
             check_operation_budget()
             self._firewall.add_rules(mutations)
