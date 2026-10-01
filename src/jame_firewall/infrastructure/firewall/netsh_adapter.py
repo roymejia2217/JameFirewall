@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection
+from jame_firewall.core.entities import (
+    FirewallInventory,
+    FirewallRule,
+    ProcessStatus,
+    RuleDirection,
+)
 from jame_firewall.core.exceptions import FirewallExecutionError
 from jame_firewall.core.ports import ProcessRunnerPort
 from jame_firewall.core.rule_identity import MANAGED_GROUP, is_managed_rule
@@ -144,9 +149,16 @@ class WindowsNetshAdapter:
             + script
             + "\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
         )
-        return self._runner.run(
+        result = self._runner.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", command]
         )
+        if result.status != ProcessStatus.COMPLETED or result.returncode is None:
+            detail = result.detail or result.stderr[:1024] or result.status.value
+            raise FirewallExecutionError(
+                f"Comando de firewall incompleto ({result.status.value}): {detail}. "
+                "Los cambios ya aplicados no se revierten; actualice el estado antes de reintentar."
+            )
+        return result.returncode, result.stdout, result.stderr
 
     def _rule_variables(self, name: str, path: Path, direction: RuleDirection) -> str:
         native_direction = "Inbound" if direction == RuleDirection.IN else "Outbound"

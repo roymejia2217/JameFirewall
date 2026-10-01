@@ -9,6 +9,7 @@ import pytest
 from tests.fakes.fake_firewall import InMemoryFirewallAdapter
 from tests.fakes.fake_uac import FakeUACAdapter
 
+from jame_firewall.core.cancellation import CancellationToken
 from jame_firewall.core.entities import (
     FirewallInventory,
     FirewallRule,
@@ -18,7 +19,7 @@ from jame_firewall.core.entities import (
     StatusSnapshot,
     SystemStatus,
 )
-from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.exceptions import FirewallExecutionError, OperationCancelledError
 from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
 from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
@@ -332,3 +333,55 @@ def test_complete_scan_preserves_successful_block_result() -> None:
     assert summary.blocked_count == 1
     assert summary.failed_count == 0
     assert not summary.errors
+
+
+@pytest.mark.parametrize("operation", ["block", "unblock"])
+def test_resource_failure_stops_further_mutations_and_verification_queries(operation: str) -> None:
+    path = Path("C:/Apps/helper.exe")
+    rules = tuple(
+        FirewallRule(managed_rule_name(path, direction), path, direction, group=MANAGED_GROUP)
+        for direction in RuleDirection
+    )
+    firewall = MagicMock()
+    firewall.list_inventory.return_value = FirewallInventory(
+        rules=rules if operation == "unblock" else ()
+    )
+    failure = FirewallExecutionError("Process TIMED_OUT; incomplete mutation")
+    firewall.add_rule.side_effect = failure
+    firewall.delete_rule.side_effect = failure
+    with pytest.raises(FirewallExecutionError, match="TIMED_OUT"):
+        if operation == "block":
+            BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter()).execute(
+                [path.parent]
+            )
+        else:
+            UnblockRulesUseCase(firewall, FakeUACAdapter()).execute()
+    assert firewall.list_inventory.call_count == 1
+    if operation == "block":
+        assert firewall.add_rule.call_count == 1
+        firewall.delete_rule.assert_not_called()
+    else:
+        assert firewall.delete_rule.call_count == 1
+        firewall.add_rule.assert_not_called()
+
+
+def test_application_shutdown_cancellation_stops_next_fake_firewall_mutation() -> None:
+    token = CancellationToken()
+    firewall = MagicMock()
+    firewall.list_inventory.return_value = FirewallInventory(rules=())
+    path = Path("C:/Apps/helper.exe")
+    committed: list[RuleDirection] = []
+
+    def mutation(_name: str, _path: Path, direction: RuleDirection) -> bool:
+        token.check()
+        committed.append(direction)
+        token.cancel()
+        return True
+
+    firewall.add_rule.side_effect = mutation
+    with pytest.raises(OperationCancelledError):
+        BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter()).execute(
+            [path.parent]
+        )
+    assert len(committed) == 1
+    assert firewall.list_inventory.call_count == 1

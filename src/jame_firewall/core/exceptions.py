@@ -27,3 +27,7 @@ class OperationCancelledError(JameFirewallError):
 
 class InstanceCoordinationError(JameFirewallError):
     """No se pudo establecer o liberar la exclusión segura entre procesos."""
+
+
+class OperationDeadlineExceeded(FirewallExecutionError):
+    """An operation exhausted its deadline; applied mutations require a fresh audit."""
