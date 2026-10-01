@@ -88,6 +88,16 @@ Managed rules use a stable native identity for each normalized Windows program p
 and traffic direction, plus a dedicated `JameFirewall.v1` group. Repeating a block
 operation repairs incomplete or disabled managed rules. The result is checked
 against the observed firewall inventory after the operation.
+Inventory queries select the managed group, requested native identity prefixes and legacy
+name suffixes in the provider. They retain at most 2,048 candidate rules and consume at
+most 8,192 query rows, including overlaps between selectors. The scope accepts up to
+eight lowercase namespaces of at most 64 letters, digits or hyphens each. Duplicate or
+changing native identities, provider errors and exceeded limits produce an error rather
+than a truncated success. Activation checks the projected candidate count before creating
+rules. Rule selection is read-only; ownership still requires the exact identity, path,
+direction and application group. Legacy and foreign rules remain visible and retained.
+These limits bound results handled by the command, not the Windows provider's internal
+caches or work. Per-command and operation deadlines remain in force.
 
 The status describes configured blocking for executables discovered in the current
 search directories. Complete blocking requires both enabled block rules, all firewall

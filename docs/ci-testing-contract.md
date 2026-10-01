@@ -41,6 +41,14 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    batch equivalent and elapsed times. Serial timing covers mutations only; batch full-cycle
    timing also includes scans, inventories, repeated activation and follow-up audits. Timing
    is diagnostic; command counts and observed policy are deterministic assertions.
+   Scoped inventory contracts add 128 real unrelated rules and verify that owned rules,
+   a case-insensitive legacy display suffix and a foreign native-name collision remain
+   distinguishable. They preserve foreign/legacy rules on deactivation and require an
+   authoritative empty inventory after fixture cleanup. Native PowerShell fault fixtures
+   reject candidate/row quotas, duplicate or changing identities, denied access and false
+   absence errors before expensive filter reads. JUnit properties record full catalog row
+   counts versus scoped candidate counts. Full-catalog enumeration and scoped verification
+   timings cover different work and are diagnostic, not a speed ratio or timing gate.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
    Add control, verifies Cancel discards edits, injects a replacement failure through the real
