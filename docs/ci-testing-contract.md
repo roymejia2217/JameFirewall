@@ -31,9 +31,9 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    real junctions, cycles and denied directory-list permissions, enforce finite traversal
    budgets and cancellation, and require incomplete scope to remain visible. The Settings
    contract verifies that discovery leaves the Tk event loop responsive and that Cancel
-   suppresses a worker's late result. Native process contracts require timeout, overflow,
-   cancellation and normal parent exit to stop pipe-owning descendants. Repeated runs
-   inspect handle/thread retention; failed Job assignment must never execute the payload.
+   suppresses a worker's late result. Native process contracts require timeout, output
+   overflow, cancellation and successful-parent completion to stop pipe-owning descendants.
+   Repeated runs check handle and thread retention.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
    Add control, verifies Cancel discards edits, injects a replacement failure through the real
@@ -44,7 +44,10 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    the scope, it invokes the real Activate control and requires every executable discovered from the 7-Zip
    directory to have enabled Windows Defender Firewall **Inbound** and **Outbound** rules with
    action **Block**.
-5. It then invokes the real Deactivate control and requires those rules to disappear.
+5. An independent ActiveStore probe checks native identities, the application group,
+   profiles, enforcement and exact executable paths. Repeating Activate must retain exactly
+   two rules per executable without duplicates. Deactivate must remove the managed namespace
+   and restore the unprotected status.
 6. **Windows Packaged Runtime** independently builds `dist/JameFirewall.exe` with PyInstaller.
    This job does not depend on the 7-Zip lane, so a system-test failure cannot hide packaging
    evidence and a packaging failure cannot hide system behavior evidence.
@@ -76,7 +79,10 @@ The packaged executable is validated separately as a black box with Pester. Ther
 
 Windows Firewall mutation is real OS integration work. The system E2E therefore waits for bounded
 observable UI completion rather than assuming an arbitrary short fixed delay. Completion predicates
-normalize Tcl/ttk values before comparison. A timeout remains fail-closed and reports the current
+normalize Tcl/ttk values before comparison and require the shared dispatcher to settle.
+The UI acceptance wait uses the production 120-second operation budget plus a 10-second
+cleanup/UI margin; it does not reset the product's deadline. Process commands are capped
+at 30 seconds and 8 MiB combined output; expired or incomplete results cannot prove success. A timeout remains fail-closed and reports the current
 application status, button states, and activity log; it is never converted to a skip or success.
 
 ## Release boundary

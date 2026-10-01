@@ -6,4 +6,4 @@ Migrate validated existing settings to protected shared Windows storage without 
 
 Report incomplete executable scans and refuse activation without changing existing rules. Bound local traversal, omit links and reparse points explicitly, and keep directory autodetection responsive without publishing canceled drafts.
 
-Bound command output and reclaim contained Windows subprocesses on completion, cancellation or failure. Report uncertain command outcomes without continuing mutations or claiming protection.
+Bound command output and total firewall operation time. Reclaim contained Windows subprocesses on completion, cancellation or failure, and report uncertain outcomes without continuing mutations or claiming protection.
