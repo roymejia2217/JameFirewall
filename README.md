@@ -74,6 +74,13 @@ Windows Defender Firewall if they are no longer wanted; do not delete other rule
 based solely on matching text. Deactivation removes only verified rules in the new
 managed namespace and reports individual rules rather than unique display names.
 
+Only one JameFirewall instance can operate on a Windows computer, across user
+sessions and installations. A second launch shows a notice without loading
+configuration or opening another control window. Administrator elevation happens
+before exclusive ownership is acquired; declining elevation ends startup.
+Ownership is retained until operation workers finish closing. After an unexpected
+termination, reopening performs the usual audit of the actual firewall policy.
+
 Operations run one at a time; activation, deactivation, refresh, and configuration
 remain unavailable until the current operation and its visual updates complete.
 Closing the window stops further commands and scanning, waits responsively for the
