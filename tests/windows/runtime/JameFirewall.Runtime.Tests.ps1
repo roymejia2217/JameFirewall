@@ -7,7 +7,11 @@ public static class JameWindowProbe {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder name, int maximum);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string kind, string title);
+    private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string kind, string title);
+    public static IntPtr FindButton(IntPtr parent, IntPtr after) {
+        // Keep null in C#: PowerShell converts a null string argument to an empty title.
+        return FindWindowEx(parent, after, "Button", null);
+    }
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr SendMessageTimeout(
         IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam,
@@ -100,14 +104,14 @@ Describe "JameFirewall packaged Windows runtime" {
             do {
                 $duplicateProcess.Refresh()
                 # MessageBox may use IDCANCEL for its sole OK button; IDs are not stable.
-                $acceptButton = [JameWindowProbe]::FindWindowEx(
-                    $duplicateProcess.MainWindowHandle, [IntPtr]::Zero, "Button", $null
+                $acceptButton = [JameWindowProbe]::FindButton(
+                    $duplicateProcess.MainWindowHandle, [IntPtr]::Zero
                 )
                 if ($acceptButton -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 }
             } while ($acceptButton -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
             $acceptButton | Should -Not -Be ([IntPtr]::Zero)
-            [JameWindowProbe]::FindWindowEx(
-                $duplicateProcess.MainWindowHandle, $acceptButton, "Button", $null
+            [JameWindowProbe]::FindButton(
+                $duplicateProcess.MainWindowHandle, $acceptButton
             ) | Should -Be ([IntPtr]::Zero)
             $messageResult = [UIntPtr]::Zero
             # BM_CLICK delivers the button notification expected by the native message box.
