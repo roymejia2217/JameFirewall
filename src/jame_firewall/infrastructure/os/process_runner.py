@@ -3,6 +3,7 @@
 import ctypes
 import math
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -151,7 +152,7 @@ class SystemProcessRunner:
         finally:
             try:
                 process.close()
-            except OSError as ex:
+            except (OSError, subprocess.TimeoutExpired) as ex:
                 raise FirewallExecutionError(
                     "No se pudo confirmar la liberación de los recursos del comando. "
                     "Los cambios ya aplicados no se revierten."
