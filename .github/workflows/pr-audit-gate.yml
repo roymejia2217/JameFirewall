@@ -48,7 +48,7 @@ jobs:
         run: uv sync --frozen --all-extras --python 3.11
       - name: Set up Node.js 24 for Release Please body validation
         if: >-
-          github.event.pull_request.user.login == 'github-actions[bot]' &&
+          github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.pull_request.head.ref ==
             'release-please--branches--main--components--JameFirewall'
@@ -59,7 +59,7 @@ jobs:
 
       - name: Install pinned Release Please parser
         if: >-
-          github.event.pull_request.user.login == 'github-actions[bot]' &&
+          github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.pull_request.head.ref ==
             'release-please--branches--main--components--JameFirewall'
@@ -68,7 +68,7 @@ jobs:
       - name: Validate standard Conventional Commits pull request title
         if: >-
           !(
-            github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
             github.event.pull_request.head.repo.full_name == github.repository &&
             github.event.pull_request.head.ref ==
               'release-please--branches--main--components--JameFirewall'
@@ -104,7 +104,7 @@ jobs:
 
       - name: Validate Release Please pull request title
         if: >-
-          github.event.pull_request.user.login == 'github-actions[bot]' &&
+          github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.pull_request.head.ref ==
             'release-please--branches--main--components--JameFirewall'
@@ -123,7 +123,7 @@ jobs:
       - name: Validate standard pull request description
         if: >-
           !(
-            github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
             github.event.pull_request.head.repo.full_name == github.repository &&
             github.event.pull_request.head.ref ==
               'release-please--branches--main--components--JameFirewall'
@@ -136,7 +136,7 @@ jobs:
 
       - name: Validate Release Please pull request body
         if: >-
-          github.event.pull_request.user.login == 'github-actions[bot]' &&
+          github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.pull_request.head.ref ==
             'release-please--branches--main--components--JameFirewall'

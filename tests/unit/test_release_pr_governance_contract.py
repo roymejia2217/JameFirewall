@@ -13,7 +13,8 @@ RELEASE_BRANCH = "release-please--branches--main--components--JameFirewall"
 def test_release_pr_identity_is_closed_over_bot_repo_and_branch() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "github-actions[bot]" in workflow
+    assert "jamefirewall-release-roymejia2217[bot]" in workflow
+    assert "github-actions[bot]" not in workflow
     assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
     assert RELEASE_BRANCH in workflow
 

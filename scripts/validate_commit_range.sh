@@ -12,7 +12,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${REPOSITORY:=}"
 
 release_subject_regex='^chore\(main\): release [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
-release_bot_email='41898282+github-actions[bot]@users.noreply.github.com'
+release_bot_email='334589023+jamefirewall-release-roymejia2217[bot]@users.noreply.github.com'
 release_branch='release-please--branches--main--components--JameFirewall'
 
 normal_commitlint() {
@@ -36,7 +36,7 @@ validate_release_commit() {
   subject="$(git show -s --format='%s' "$sha")"
 
   test "$author_email" = "$release_bot_email" || {
-    echo "Release commit author is not github-actions[bot]: $author_email" >&2
+    echo "Release commit author is not jamefirewall-release-roymejia2217[bot]: $author_email" >&2
     exit 1
   }
   [[ "$subject" =~ $release_subject_regex ]] || {
@@ -114,7 +114,7 @@ validate_range() {
 }
 
 if [ "$EVENT_NAME" = "pull_request" ] &&
-   [ "$PR_AUTHOR" = "github-actions[bot]" ] &&
+   [ "$PR_AUTHOR" = "jamefirewall-release-roymejia2217[bot]" ] &&
    [ "$HEAD_REPOSITORY" = "$REPOSITORY" ] &&
    [ "$HEAD_BRANCH" = "$release_branch" ]; then
   mapfile -t release_commits < <(git rev-list --reverse "$BASE_SHA..$HEAD_SHA")
