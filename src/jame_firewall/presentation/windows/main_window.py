@@ -12,6 +12,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.widgets.scrolled import ScrolledText
 
 from jame_firewall.core.entities import StatusSnapshot, SystemStatus
+from jame_firewall.core.execution import operation_budget
 from jame_firewall.infrastructure.container import AppContainer
 from jame_firewall.presentation import constants as C
 from jame_firewall.presentation.queue_dispatcher import QueueDispatcher
@@ -187,7 +188,14 @@ class JameFirewallApp:
         if self._closing or self.dispatcher.is_busy:
             return
         self._set_buttons_state("disabled")
-        if not self.dispatcher.submit_background_task(worker, on_complete=self._finish_operation):
+
+        def bounded_worker() -> None:
+            with operation_budget():
+                worker()
+
+        if not self.dispatcher.submit_background_task(
+            bounded_worker, on_complete=self._finish_operation
+        ):
             self._finish_operation()
 
     def _finish_operation(self) -> None:

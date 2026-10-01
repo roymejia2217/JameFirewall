@@ -13,6 +13,7 @@ from pathlib import Path
 
 from jame_firewall.core.cancellation import CancellationToken
 from jame_firewall.core.entities import ScanIssue, ScanResult
+from jame_firewall.core.execution import check_operation_budget
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,7 @@ class OSFileSystemAdapter:
 
         def check(path: Path) -> None:
             self._cancellation.check()
+            check_operation_budget()
             if self._clock() - start >= limits.max_seconds:
                 stop(path, "Límite de duración alcanzado")
 

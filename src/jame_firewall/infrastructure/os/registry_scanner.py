@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from jame_firewall.core.cancellation import CancellationToken
+from jame_firewall.core.execution import check_operation_budget
 
 
 class DiscoveryError(RuntimeError):
@@ -33,6 +34,7 @@ class WindowsRegistryAdapter:
 
         def check() -> None:
             self._cancellation.check()
+            check_operation_budget()
             if self._clock() - start >= 30.0:
                 raise DiscoveryError("Autodetección incompleta: límite de duración alcanzado")
 

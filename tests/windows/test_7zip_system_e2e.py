@@ -5,20 +5,22 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import subprocess
 import sys
 import time
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 from tests.windows.firewall_probe import (
     FirewallRuleSnapshot,
     managed_rule_names,
-    probe_firewall_rules,
 )
 
+from jame_firewall.core.execution import OPERATION_TIMEOUT_SECONDS
 from jame_firewall.infrastructure.container import AppContainer
 from jame_firewall.infrastructure.persistence.json_config import JsonConfigAdapter
 from jame_firewall.presentation import constants as C
@@ -31,8 +33,57 @@ pytestmark = [
     pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows"),
 ]
 
-STARTUP_TIMEOUT_SECONDS = 60.0
-FIREWALL_OPERATION_TIMEOUT_SECONDS = 120.0
+STARTUP_TIMEOUT_SECONDS = OPERATION_TIMEOUT_SECONDS + 10.0
+FIREWALL_OPERATION_TIMEOUT_SECONDS = OPERATION_TIMEOUT_SECONDS + 10.0
+
+
+class ActiveFirewallRuleSnapshot(FirewallRuleSnapshot):
+    """Independent native evidence of identity and active policy application."""
+
+    Name: str
+    Group: str
+    Profile: str
+    PrimaryStatus: str
+    EnforcementStates: list[str]
+
+
+def _probe_active_managed_rules() -> list[ActiveFirewallRuleSnapshot]:
+    # Query the whole native namespace so unexpected duplicates cannot hide behind names.
+    script = """$ErrorActionPreference = 'Stop'
+$items = @(Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object {
+    $_.Name.StartsWith('jame-block:v1:', [StringComparison]::OrdinalIgnoreCase)
+} | ForEach-Object {
+    $rule = $_
+    $states = @($rule.EnforcementStatus)
+    if ($null -ne $rule.EnforcementStatus.PSObject.Properties['Value']) {
+        $states = @($rule.EnforcementStatus.Value)
+    }
+    $application = @($rule | Get-NetFirewallApplicationFilter)
+    foreach ($filter in $application) {
+        [PSCustomObject]@{
+            Name = [string]$rule.Name
+            DisplayName = [string]$rule.DisplayName
+            Group = [string]$rule.Group
+            Direction = [string]$rule.Direction
+            Action = [string]$rule.Action
+            Enabled = [string]$rule.Enabled
+            Profile = [string]$rule.Profile
+            PrimaryStatus = [string]$rule.PrimaryStatus
+            EnforcementStates = @($states | ForEach-Object { [string]$_ })
+            Program = [string]$filter.Program
+        }
+    }
+})
+ConvertTo-Json -InputObject $items -Depth 4 -Compress
+"""
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return cast(list[ActiveFirewallRuleSnapshot], json.loads(completed.stdout))
 
 
 def _pump_until(
@@ -45,7 +96,7 @@ def _pump_until(
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         app.root.update()
-        if predicate():
+        if predicate() and not app.dispatcher.is_busy:
             return
         time.sleep(0.05)
     diagnostics = (
@@ -64,11 +115,11 @@ def _log_text(app: JameFirewallApp) -> str:
 def _rules_for_programs(
     rule_names: tuple[str, ...],
     programs: set[str],
-) -> list[FirewallRuleSnapshot]:
+) -> list[ActiveFirewallRuleSnapshot]:
     return [
         rule
-        for rule in probe_firewall_rules(rule_names)
-        if rule.get("Program", "").casefold() in programs
+        for rule in _probe_active_managed_rules()
+        if rule["Name"] in rule_names and rule["Program"].casefold() in programs
     ]
 
 
@@ -90,10 +141,12 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
     seven_zip_cli = seven_zip_dir / "7z.exe"
     assert seven_zip_cli.is_file(), "the pinned 7-Zip fixture was not installed"
 
-    expected_paths = {path.resolve() for path in seven_zip_dir.rglob("*.exe") if path.is_file()}
+    expected_paths = {
+        Path(os.path.abspath(path)) for path in seven_zip_dir.rglob("*.exe") if path.is_file()
+    }
     expected_executables = {str(path).casefold() for path in expected_paths}
     expected_rule_names = managed_rule_names(expected_paths)
-    assert str(seven_zip_cli.resolve()).casefold() in expected_executables
+    assert str(Path(os.path.abspath(seven_zip_cli))).casefold() in expected_executables
 
     baseline_dir = tmp_path / "baseline-empty"
     baseline_dir.mkdir()
@@ -171,8 +224,8 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         dialog.btn_save.invoke()
         app.root.update()
         assert not dialog.winfo_exists()
-        assert seven_zip_dir.resolve() in container.config_use_case.get_directories()
-        assert seven_zip_dir.resolve() in JsonConfigAdapter(config_path).load_paths()
+        assert Path(os.path.abspath(seven_zip_dir)) in container.config_use_case.get_directories()
+        assert Path(os.path.abspath(seven_zip_dir)) in JsonConfigAdapter(config_path).load_paths()
         assert C.MSG_CONF_SAVED in _log_text(app)
 
         # A configured folder can disappear after saving: partial scans must not mutate.
@@ -230,21 +283,47 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
 
         created_rules = _rules_for_programs(expected_rule_names, expected_executables)
         assert created_rules, "JameFirewall created no 7-Zip firewall rules"
+        assert len(created_rules) == 2 * len(expected_executables)
+        assert len(_probe_active_managed_rules()) == len(created_rules)
+        assert {rule["Name"] for rule in created_rules} == set(expected_rule_names)
 
-        by_program: dict[str, list[FirewallRuleSnapshot]] = {}
+        by_program: dict[str, list[ActiveFirewallRuleSnapshot]] = {}
         for rule in created_rules:
             by_program.setdefault(rule["Program"].casefold(), []).append(rule)
 
         assert set(by_program) == expected_executables
         for executable, rules in by_program.items():
+            assert len(rules) == 2, executable
             assert {rule["Direction"] for rule in rules} == {"Inbound", "Outbound"}, executable
             assert all(rule["Action"] == "Block" for rule in rules), executable
             assert all(rule["Enabled"] == "True" for rule in rules), executable
+            assert all(rule["Group"] == "JameFirewall.v1" for rule in rules), executable
+            assert all(rule["Profile"] == "Any" for rule in rules), executable
+            assert all(rule["PrimaryStatus"] == "OK" for rule in rules), executable
+            for rule in rules:
+                states = set(rule["EnforcementStates"])
+                assert states & {"Enforced", "Full"}, rule
+                assert states <= {"Enforced", "Full", "ProfileInactive"}, rule
 
         assert app.status_label.cget("text") == C.STATUS_PROTECTED
         assert app.rule_count_label.cget("text") == (
             f"Reglas: {2 * len(expected_executables)}; "
             f"ejecutables cubiertos: {len(expected_executables)}/{len(expected_executables)}"
+        )
+
+        # A second actual Activate is a reconciliation, retaining exact native identities.
+        app.block_button.invoke()
+        _pump_until(
+            app,
+            lambda: str(app.block_button.cget("state")) == "normal",
+            timeout=FIREWALL_OPERATION_TIMEOUT_SECONDS,
+        )
+        assert app.status_label.cget("text") == C.STATUS_PROTECTED, _log_text(app)
+        repeated_rules = _probe_active_managed_rules()
+        assert len(repeated_rules) == len(created_rules)
+        assert {rule["Name"] for rule in repeated_rules} == set(expected_rule_names)
+        assert sorted(repeated_rules, key=lambda rule: rule["Name"]) == sorted(
+            created_rules, key=lambda rule: rule["Name"]
         )
 
         app.unblock_button.invoke()
@@ -258,6 +337,7 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         assert "Error de desbloqueo:" not in unblock_log, unblock_log
         assert C.MSG_SUCCESS_UNBLOCK in unblock_log, unblock_log
         assert not _rules_for_programs(expected_rule_names, expected_executables)
+        assert _probe_active_managed_rules() == []
         assert app.status_label.cget("text") == C.STATUS_UNPROTECTED
     finally:
         with contextlib.suppress(Exception):

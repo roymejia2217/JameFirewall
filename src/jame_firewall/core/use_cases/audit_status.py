@@ -4,6 +4,7 @@ from pathlib import Path
 
 from jame_firewall.core.entities import StatusSnapshot, SystemStatus
 from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.execution import check_operation_budget, operation_budget
 from jame_firewall.core.ports import DirectoryScannerPort, FirewallPort, UACPort
 from jame_firewall.core.rule_identity import (
     covered_programs,
@@ -32,6 +33,13 @@ class AuditFirewallStatusUseCase:
 
     def execute(self, search_directories: list[Path]) -> StatusSnapshot:
         """Determina el estado del sistema y conteo de reglas activas."""
+        with operation_budget():
+            result = self._execute(search_directories)
+            check_operation_budget()
+            return result
+
+    def _execute(self, search_directories: list[Path]) -> StatusSnapshot:
+        """Determina el estado del sistema y conteo de reglas activas."""
         if not self._uac.is_admin():
             return StatusSnapshot(
                 status=SystemStatus.NO_ADMIN_PRIVILEGES,
@@ -41,6 +49,7 @@ class AuditFirewallStatusUseCase:
 
         suffixes = [self._primary_suffix, *self._legacy_suffixes]
         try:
+            check_operation_budget()
             inventory = self._firewall.list_inventory(suffixes)
         except FirewallExecutionError as ex:
             return StatusSnapshot(SystemStatus.ERROR, 0, str(ex))

@@ -135,24 +135,26 @@ found paths, and has a cooperative 30-second deadline. Errors retain the draft.
 
 Operations run one at a time; activation, deactivation, refresh, and configuration
 remain unavailable until the current operation and its visual updates complete.
-Each command has a maximum timeout of 30 seconds and retains at most 8 MiB of
-combined raw stdout/stderr. Overflow is an explicit failure; partial output is never
-accepted as a valid firewall inventory. Process results distinguish completion,
-timeout, output overflow, launch failure and I/O failure.
+Activation, deactivation and audit share a cooperative 120-second operation budget,
+including the audit following a mutation. Nested steps never reset that deadline.
+Each command has a maximum timeout of 30 seconds, shortened to the operation time
+remaining. Commands retain at most 8 MiB of combined raw stdout/stderr; overflow is
+an explicit failure, and partial output is never accepted as a valid firewall inventory.
 
-On Windows, commands start suspended, enter a private Job Object and resume only
-after containment succeeds. Only standard I/O handles are inherited, and ordinary
-child-process breakaway is disabled. Timeout, overflow, cancellation and normal
-parent exit reclaim contained descendants, including children holding pipes open.
-Cleanup polls for completion for at most five seconds and reports failures explicitly.
-Processes started through external brokers such as WMI are outside Job ownership.
+On Windows, a command starts suspended, is assigned to a private Job Object, and
+resumes only after containment succeeds. Only its standard I/O handles are inherited.
+The Job does not permit ordinary child-process breakaway. Timeout, output overflow,
+cancellation and normal parent exit reclaim contained descendants, including children
+holding output pipes open. Cleanup polls for completion for at most five seconds and
+reports failures explicitly. This contains ordinary subprocess descendants; a process
+started through an external broker such as WMI is outside that Job's ownership.
 
-Closing the window stops further commands and scanning, cancels the active command
-tree and waits responsively for worker cleanup before releasing instance ownership.
-OS process creation, cleanup APIs and blocked filesystem calls can delay shutdown
-beyond cooperative deadlines. An incomplete command aborts further mutations and
-reports an uncertain result rather than claiming success; already applied changes
-are not undone.
+Closing the window stops further commands and scanning, requests cancellation of the
+active command tree, and waits responsively for worker cleanup before releasing
+instance ownership. Operating-system process creation, cleanup APIs and a blocked
+filesystem call are not interruptible Python calls and can delay shutdown beyond
+cooperative deadlines. A deadline or command failure aborts additional mutations;
+the interface reports an error rather than claiming a successful or protected state.
 
 Cancellation does not undo firewall changes already applied. Reopen the application
 to audit the resulting state and repair incomplete coverage. The activity log keeps

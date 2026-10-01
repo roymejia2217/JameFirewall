@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from jame_firewall.core.entities import UnblockSummary
 from jame_firewall.core.exceptions import PrivilegesRequiredError
+from jame_firewall.core.execution import check_operation_budget, operation_budget
 from jame_firewall.core.ports import FirewallPort, UACPort
 from jame_firewall.core.rule_identity import is_legacy_rule, is_managed_rule
 
@@ -31,6 +32,17 @@ class UnblockRulesUseCase:
         on_progress: Callable[[str, str], None] | None = None,
     ) -> UnblockSummary:
         """Elimina identidades propias verificadas y comunica reglas antiguas retenidas."""
+        with operation_budget():
+            result = self._execute(on_progress=on_progress)
+            check_operation_budget()
+            return result
+
+    def _execute(
+        self,
+        *,
+        on_progress: Callable[[str, str], None] | None = None,
+    ) -> UnblockSummary:
+        """Elimina identidades propias verificadas y comunica reglas antiguas retenidas."""
         progress = on_progress if on_progress is not None else self._on_progress
         if not self._uac.is_admin():
             raise PrivilegesRequiredError(
@@ -38,6 +50,7 @@ class UnblockRulesUseCase:
             )
 
         suffixes = [self._primary_suffix, *self._legacy_suffixes]
+        check_operation_budget()
         inventory = self._firewall.list_inventory(suffixes)
         owned = [rule for rule in inventory.rules if is_managed_rule(rule, self._primary_suffix)]
         legacy_count = sum(is_legacy_rule(rule, suffixes) for rule in inventory.rules)
@@ -45,7 +58,9 @@ class UnblockRulesUseCase:
         for rule in owned:
             if progress:
                 progress(f"- {rule.program_path} ({rule.direction})", "info")
+            check_operation_budget()
             self._firewall.delete_rule(rule)
+        check_operation_budget()
         remaining = self._firewall.list_inventory(suffixes) if owned else inventory
         remaining_names = {rule.name for rule in remaining.rules}
         failed_names = {rule.name for rule in owned if rule.name in remaining_names}
