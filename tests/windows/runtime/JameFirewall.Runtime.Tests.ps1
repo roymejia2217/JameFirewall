@@ -1,4 +1,16 @@
 BeforeAll {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class JameWindowProbe {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hWnd, StringBuilder name, int maximum);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+}
+"@
+
     $sourceExe = $env:JAMEFIREWALL_EXE
     if ([string]::IsNullOrWhiteSpace($sourceExe)) {
         throw "JAMEFIREWALL_EXE is required."
@@ -19,7 +31,7 @@ BeforeAll {
 }
 
 Describe "JameFirewall packaged Windows runtime" {
-    It "runs from an isolated directory with no project Python on PATH" {
+    It "runs one elevated instance and rejects duplicates without project Python on PATH" {
         $script:isAdmin | Should -BeTrue
 
         $oldPath = $env:PATH
@@ -53,6 +65,40 @@ Describe "JameFirewall packaged Windows runtime" {
             $windowProcess | Should -Not -BeNullOrEmpty
             $windowProcess.MainWindowHandle | Should -Not -Be 0
             $windowProcess.MainWindowTitle | Should -Be "JameFirewall"
+            $windowClass = [System.Text.StringBuilder]::new(256)
+            [JameWindowProbe]::GetClassName($windowProcess.MainWindowHandle, $windowClass, 256) |
+                Should -BeGreaterThan 0
+            $windowClass.ToString() | Should -Not -Be "#32770"
+
+            $secondStart = Get-Date
+            Start-Process -FilePath $script:runtimeExe -WorkingDirectory (Split-Path $script:runtimeExe) | Out-Null
+            $duplicateProcess = $null
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+                Start-Sleep -Milliseconds 250
+                $duplicateProcess = Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        $_.StartTime -ge $secondStart -and
+                        $_.Path -eq $script:runtimeExe -and
+                        $_.MainWindowHandle -ne 0
+                    } |
+                    Select-Object -First 1
+            } while ($null -eq $duplicateProcess -and (Get-Date) -lt $deadline)
+
+            $duplicateProcess | Should -Not -BeNullOrEmpty
+            $duplicateProcess.MainWindowTitle | Should -Be "JameFirewall - instancia activa"
+            $dialogClass = [System.Text.StringBuilder]::new(256)
+            [JameWindowProbe]::GetClassName($duplicateProcess.MainWindowHandle, $dialogClass, 256) |
+                Should -BeGreaterThan 0
+            $dialogClass.ToString() | Should -Be "#32770"
+            # Acknowledge only the duplicate notice owned by this isolated runtime fixture.
+            [JameWindowProbe]::SendMessage(
+                $duplicateProcess.MainWindowHandle, 0x111, [IntPtr]::new(1), [IntPtr]::Zero
+            ) | Out-Null
+            $duplicateProcess.WaitForExit(15000) | Should -BeTrue
+            $duplicateProcess.ExitCode | Should -Be 0
+            $windowProcess.Refresh()
+            $windowProcess.HasExited | Should -BeFalse
 
             $crashLog = Join-Path (Split-Path $script:runtimeExe) "crash_log.txt"
             Test-Path $crashLog | Should -BeFalse
@@ -61,7 +107,7 @@ Describe "JameFirewall packaged Windows runtime" {
             $env:PATH = $oldPath
             $ownedProcesses = @(
                 Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
-                    Where-Object { $_.StartTime -ge $startedAfter }
+                    Where-Object { $_.StartTime -ge $startedAfter -and $_.Path -eq $script:runtimeExe }
             )
             $ownedProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
             $ownedProcesses | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
