@@ -24,10 +24,15 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
 1. **Linux Quality** validates the PR description contract, every PR commit message, Actionlint,
    Ruff, Ruff formatting, mypy strict mode, and the portable pytest suite.
 2. **Windows System Acceptance** runs on the explicit `windows-2025` hosted image. It first builds
-   the real Tk/ttk widget tree and invokes the primary application control bindings.
+   the real Tk/ttk widget tree and invokes the primary application control bindings. Native
+   storage contracts verify administrator/SYSTEM permissions, reject untrusted existing storage,
+   and preserve the previous configuration when Windows denies replacement or a writer is
+   terminated before publishing its flushed temporary file.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
-   Add control, and saves through the real Save control.
+   Add control, verifies Cancel discards edits, injects a replacement failure through the real
+   Save control, and requires the modal, disk and saved memory to retain their previous state.
+   Retrying Save must commit the full draft and reload it from disk before activation.
 4. It invokes the real Activate control and requires every executable discovered from the 7-Zip
    directory to have enabled Windows Defender Firewall **Inbound** and **Outbound** rules with
    action **Block**.
@@ -36,7 +41,12 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    This job does not depend on the 7-Zip lane, so a system-test failure cannot hide packaging
    evidence and a packaging failure cannot hide system behavior evidence.
 7. Pester copies the executable outside the repository, removes project Python from `PATH`,
-   launches it, requires a real `JameFirewall` top-level window, and rejects startup crash logs.
+   migrates a legacy configuration into protected ProgramData storage, and inspects its owner
+   and ACL. It requires a real `JameFirewall` top-level window, rejects a duplicate launch,
+   verifies both duplicate processes exit after acknowledgment, and reports corrupt persisted
+   configuration through a native startup error without replacing it or opening the control UI.
+   Startup crash logs fail acceptance. This fixture requires an isolated runner without an
+   existing production configuration and cleans up only the storage it creates.
 8. **Required CI** is fail-closed and succeeds only if Linux Quality, Windows System Acceptance,
    and Windows Packaged Runtime all succeed.
 
