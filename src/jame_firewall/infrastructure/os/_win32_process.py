@@ -125,6 +125,7 @@ class Win32Process:
         self._handles: set[int] = set()
         self._process = self._job = 0
         self._finished = self._assigned = False
+        self._cleanup_deadline: float | None = None
         self._streams: list[int] = []
         self._initialize_api()
         attributes = ctypes.c_void_p()
@@ -311,7 +312,9 @@ class Win32Process:
             self._require(self._terminate_job(self._job, 1))
         else:
             self._require(self._terminate_process(self._process, 1))
-        deadline = time.monotonic() + CLEANUP_TIMEOUT_SECONDS
+        if self._cleanup_deadline is None:
+            self._cleanup_deadline = time.monotonic() + CLEANUP_TIMEOUT_SECONDS
+        deadline = self._cleanup_deadline
         while True:
             root_done = self._wait(self._process, 0) == 0
             accounting = _Accounting()

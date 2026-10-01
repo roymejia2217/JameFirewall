@@ -4,6 +4,7 @@ import contextlib
 import os
 import signal
 import subprocess
+import time
 from typing import Protocol
 
 CLEANUP_TIMEOUT_SECONDS = 5.0
@@ -42,6 +43,7 @@ class PosixProcess:
             raise OSError("Process pipes were not created")
         self._streams = (self._process.stdout, self._process.stderr)
         self._finished = False
+        self._cleanup_deadline: float | None = None
         try:
             for stream in self._streams:
                 os.set_blocking(stream.fileno(), False)
@@ -61,9 +63,11 @@ class PosixProcess:
     def finish(self) -> None:
         if self._finished:
             return
+        if self._cleanup_deadline is None:
+            self._cleanup_deadline = time.monotonic() + CLEANUP_TIMEOUT_SECONDS
         with contextlib.suppress(ProcessLookupError):
             os.killpg(self._process.pid, signal.SIGKILL)
-        self._process.wait(timeout=CLEANUP_TIMEOUT_SECONDS)
+        self._process.wait(timeout=max(0.0, self._cleanup_deadline - time.monotonic()))
         self._finished = True
 
     def close(self) -> None:
