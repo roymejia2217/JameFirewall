@@ -89,7 +89,7 @@ def is_release_please(
     repository: str,
 ) -> bool:
     return (
-        pr_author == "github-actions[bot]"
+        pr_author == "jamefirewall-release-roymejia2217[bot]"
         and head_branch == RELEASE_BRANCH
         and head_repository == repository
     )

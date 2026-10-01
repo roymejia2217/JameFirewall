@@ -29,7 +29,7 @@ body should explain context that is not already obvious from the subject and dif
 Release Please is the only typed exception: its generated commit is header-only
 `chore(main): release <SemVer>`. CI may select the restricted release profile only when the pull
 request comes from the canonical Release Please branch in this repository and the commit author is
-`github-actions[bot]`. The normal profile still rejects the same header-only message from humans
+`jamefirewall-release-roymejia2217[bot]`. The normal profile still rejects the same header-only message from humans
 or agents.
 
 Reference: https://www.conventionalcommits.org/en/v1.0.0/
@@ -69,7 +69,7 @@ when no tracked issue exists.
 
 The canonical Release Please pull request is the only body-format exception. Its generated body is
 load-bearing input to Release Please and must not be rewritten into the human PR template.
-`PR Governance` recognizes that exception only for `github-actions[bot]`, the same repository, and
+`PR Governance` recognizes that exception only for `jamefirewall-release-roymejia2217[bot]`, the same repository, and
 the exact Release Please branch, then validates title/body consistency with the pinned upstream
 `release-please` 17.3.0 parser. Human and agent pull requests never receive this exception.
 

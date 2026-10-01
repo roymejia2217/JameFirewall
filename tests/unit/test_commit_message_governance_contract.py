@@ -99,9 +99,10 @@ def test_release_please_exception_is_identity_and_branch_bound() -> None:
     validator = RANGE_VALIDATOR.read_text(encoding="utf-8")
 
     assert "PR_AUTHOR:" in workflow
-    assert "github-actions[bot]" in validator
+    assert "jamefirewall-release-roymejia2217[bot]" in validator
+    assert "github-actions[bot]" not in validator
     assert "release-please--branches--main--components--JameFirewall" in validator
-    assert "41898282+github-actions[bot]@users.noreply.github.com" in validator
+    assert "334589023+jamefirewall-release-roymejia2217[bot]@users.noreply.github.com" in validator
     assert "Release Please PR must contain exactly one generated release commit." in validator
     assert "commitlint.release.config.cjs" in validator
 

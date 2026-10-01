@@ -113,7 +113,7 @@ jobs:
         if: >-
           github.event_name == 'pull_request' &&
           !(
-            github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
             github.event.pull_request.head.repo.full_name == github.repository &&
             github.event.pull_request.head.ref ==
               'release-please--branches--main--components--JameFirewall'
@@ -123,7 +123,7 @@ jobs:
       - name: Require consolidated changelog for Release Please
         if: >-
           github.event_name == 'pull_request' &&
-          github.event.pull_request.user.login == 'github-actions[bot]' &&
+          github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           github.event.pull_request.head.ref ==
             'release-please--branches--main--components--JameFirewall'
@@ -164,7 +164,7 @@ jobs:
         if: >-
           github.event_name == 'pull_request' &&
           !(
-            github.event.pull_request.user.login == 'github-actions[bot]' &&
+            github.event.pull_request.user.login == 'jamefirewall-release-roymejia2217[bot]' &&
             github.event.pull_request.head.repo.full_name == github.repository &&
             github.event.pull_request.head.ref ==
               'release-please--branches--main--components--JameFirewall'

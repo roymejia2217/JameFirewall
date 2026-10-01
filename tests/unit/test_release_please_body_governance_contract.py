@@ -41,7 +41,8 @@ def test_pr_governance_routes_release_body_to_upstream_adapter() -> None:
 
     assert "Validate standard pull request description" in workflow
     assert "Validate Release Please pull request body" in workflow
-    assert "github-actions[bot]" in workflow
+    assert "jamefirewall-release-roymejia2217[bot]" in workflow
+    assert "github-actions[bot]" not in workflow
     assert RELEASE_BRANCH in workflow
     assert "node scripts/validate_release_please_pr.cjs" in workflow
     assert "--body-file" in workflow
@@ -54,7 +55,7 @@ def test_ci_does_not_apply_human_body_template_to_release_please_pr() -> None:
     step = workflow.split("- name: Validate current pull request description", maxsplit=1)[1]
     step = step.split("- name: Validate formatting and lint", maxsplit=1)[0]
 
-    assert "github-actions[bot]" in step
+    assert "jamefirewall-release-roymejia2217[bot]" in step
     assert RELEASE_BRANCH in step
     assert "!=" in step or "!(" in step
 

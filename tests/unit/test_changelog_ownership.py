@@ -64,7 +64,7 @@ def test_release_please_must_not_modify_changelog(
     kwargs.update(
         {
             "pr_title": "chore(main): release 0.3.0",
-            "pr_author": "github-actions[bot]",
+            "pr_author": "jamefirewall-release-roymejia2217[bot]",
             "head_branch": ownership.RELEASE_BRANCH,
         }
     )

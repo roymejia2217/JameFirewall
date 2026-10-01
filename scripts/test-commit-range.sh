@@ -43,7 +43,7 @@ run_release_validator() {
 
   (
     cd "$repo"
-    EVENT_NAME=pull_request     BASE_SHA="$base"     HEAD_SHA="$head"     PR_AUTHOR='github-actions[bot]'     HEAD_BRANCH='release-please--branches--main--components--JameFirewall'     HEAD_REPOSITORY=example/JameFirewall     REPOSITORY=example/JameFirewall       bash "$VALIDATOR"
+    EVENT_NAME=pull_request     BASE_SHA="$base"     HEAD_SHA="$head"     PR_AUTHOR='jamefirewall-release-roymejia2217[bot]'     HEAD_BRANCH='release-please--branches--main--components--JameFirewall'     HEAD_REPOSITORY=example/JameFirewall     REPOSITORY=example/JameFirewall       bash "$VALIDATOR"
   )
 }
 
@@ -103,7 +103,7 @@ assert_rejected "merge whose second parent is not base history"   run_validator 
 git -C "$REPO" switch -q -C release-fixture "$BASE1"
 printf '%s\n' release > "$REPO/release.txt"
 git -C "$REPO" add release.txt
-GIT_AUTHOR_NAME='github-actions[bot]' GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com' GIT_COMMITTER_NAME='GitHub' GIT_COMMITTER_EMAIL='noreply@github.com'   git -C "$REPO" commit -q -m "chore(main): release 0.2.0"
+GIT_AUTHOR_NAME='jamefirewall-release-roymejia2217[bot]' GIT_AUTHOR_EMAIL='334589023+jamefirewall-release-roymejia2217[bot]@users.noreply.github.com' GIT_COMMITTER_NAME='GitHub' GIT_COMMITTER_EMAIL='noreply@github.com'   git -C "$REPO" commit -q -m "chore(main): release 0.2.0"
 RELEASE_HEAD="$(git -C "$REPO" rev-parse HEAD)"
 run_release_validator "$REPO" "$BASE1" "$RELEASE_HEAD"
 
