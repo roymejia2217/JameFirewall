@@ -31,6 +31,16 @@ public static class JameWindowProbe {
 
     $script:runtimeExe = Join-Path $script:runtimeDir "JameFirewall.exe"
     Copy-Item $resolvedExe $script:runtimeExe
+    $script:productionDir = Join-Path ([Environment]::GetFolderPath("CommonApplicationData")) "JameFirewall"
+    $script:ownsProductionDir = -not (Test-Path -LiteralPath $script:productionDir)
+    if (-not $script:ownsProductionDir) {
+        throw "Packaged acceptance requires an isolated runner without existing JameFirewall configuration."
+    }
+    $script:productionConfig = Join-Path $script:productionDir "jamefirewall_config.json"
+    $script:legacyConfig = Join-Path $script:runtimeDir "jamefirewall_config.json"
+    $script:legacyDirectories = @((Join-Path $script:runtimeDir "legacy-empty"))
+    @{directories = $script:legacyDirectories} | ConvertTo-Json | Set-Content -LiteralPath $script:legacyConfig -Encoding utf8NoBOM
+    $script:legacyContent = Get-Content -LiteralPath $script:legacyConfig -Raw
 
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -39,7 +49,7 @@ public static class JameWindowProbe {
 }
 
 Describe "JameFirewall packaged Windows runtime" {
-    It "runs one elevated instance and rejects duplicates without project Python on PATH" {
+    It "migrates protected config, rejects duplicates and reports corrupt config in the packaged app" {
         $script:isAdmin | Should -BeTrue
 
         $oldPath = $env:PATH
@@ -71,12 +81,27 @@ Describe "JameFirewall packaged Windows runtime" {
             } while ($null -eq $windowProcess -and (Get-Date) -lt $deadline)
 
             $windowProcess | Should -Not -BeNullOrEmpty
+            $null = $windowProcess.Handle
             $windowProcess.MainWindowHandle | Should -Not -Be 0
             $windowProcess.MainWindowTitle | Should -Be "JameFirewall"
             $windowClass = [System.Text.StringBuilder]::new(256)
             [JameWindowProbe]::GetClassName($windowProcess.MainWindowHandle, $windowClass, 256) |
                 Should -BeGreaterThan 0
             $windowClass.ToString() | Should -Not -Be "#32770"
+            Test-Path -LiteralPath $script:productionConfig | Should -BeTrue
+            (Get-Content -LiteralPath $script:legacyConfig -Raw) | Should -Be $script:legacyContent
+            $saved = Get-Content -LiteralPath $script:productionConfig -Raw | ConvertFrom-Json
+            @($saved.directories).Count | Should -Be 1
+            [Environment]::ExpandEnvironmentVariables($saved.directories[0]) | Should -Be $script:legacyDirectories[0]
+            foreach ($path in @($script:productionDir, $script:productionConfig)) {
+                $acl = Get-Acl -LiteralPath $path
+                $acl.AreAccessRulesProtected | Should -BeTrue
+                $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value | Should -Be "S-1-5-32-544"
+                $sids = @($acl.Access | ForEach-Object {
+                    $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                })
+                ($sids | Sort-Object) -join "," | Should -Be "S-1-5-18,S-1-5-32-544"
+            }
 
             $secondStart = Get-Date
             $duplicateLaunch = Start-Process -FilePath $script:runtimeExe -WorkingDirectory (Split-Path $script:runtimeExe) -PassThru
@@ -131,6 +156,37 @@ Describe "JameFirewall packaged Windows runtime" {
             $windowProcess.Refresh()
             $windowProcess.HasExited | Should -BeFalse
 
+            # Corrupt persisted state must show a startup error, preserve bytes and open no Tk UI.
+            $windowProcess.CloseMainWindow() | Should -BeTrue
+            $windowProcess.WaitForExit(45000) | Should -BeTrue
+            $windowProcess.ExitCode | Should -Be 0
+            [IO.File]::WriteAllText($script:productionConfig, "{")
+            $errorStart = Get-Date
+            $errorLaunch = Start-Process -FilePath $script:runtimeExe -WorkingDirectory $script:runtimeDir -PassThru
+            $null = $errorLaunch.Handle
+            $errorProcess = $null
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+                Start-Sleep -Milliseconds 250
+                $errorProcess = Get-Process -Name "JameFirewall" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.StartTime -ge $errorStart -and $_.Path -eq $script:runtimeExe -and $_.MainWindowHandle -ne 0 } |
+                    Select-Object -First 1
+            } while ($null -eq $errorProcess -and (Get-Date) -lt $deadline)
+            $errorProcess | Should -Not -BeNullOrEmpty
+            $null = $errorProcess.Handle
+            $errorProcess.MainWindowTitle | Should -Be "JameFirewall"
+            $errorClass = [Text.StringBuilder]::new(256)
+            [JameWindowProbe]::GetClassName($errorProcess.MainWindowHandle, $errorClass, 256) | Should -BeGreaterThan 0
+            $errorClass.ToString() | Should -Be "#32770"
+            $errorButton = [JameWindowProbe]::FindButton($errorProcess.MainWindowHandle, [IntPtr]::Zero)
+            $errorButton | Should -Not -Be ([IntPtr]::Zero)
+            $messageResult = [UIntPtr]::Zero
+            [JameWindowProbe]::SendMessageTimeout($errorButton, 0xF5, [IntPtr]::Zero, [IntPtr]::Zero, 2, 5000, [ref]$messageResult) |
+                Should -Not -Be ([IntPtr]::Zero)
+            $errorProcess.WaitForExit(15000) | Should -BeTrue
+            $errorLaunch.WaitForExit(15000) | Should -BeTrue
+            (Get-Content -LiteralPath $script:productionConfig -Raw) | Should -Be "{"
+
             $crashLog = Join-Path (Split-Path $script:runtimeExe) "crash_log.txt"
             Test-Path $crashLog | Should -BeFalse
         }
@@ -144,6 +200,9 @@ Describe "JameFirewall packaged Windows runtime" {
             $ownedProcesses | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
 
             Remove-Item -LiteralPath $script:runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
+            if ($script:ownsProductionDir) {
+                Remove-Item -LiteralPath $script:productionDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }
