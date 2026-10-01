@@ -144,3 +144,11 @@ def test_retained_path_memory_is_bounded(tmp_path: Path) -> None:
 def test_invalid_limits_fail_at_construction(create: Callable[[], ScanLimits]) -> None:
     with pytest.raises(ValueError):
         create()
+
+
+def test_missing_configured_child_is_reported_even_with_its_parent(tmp_path: Path) -> None:
+    (tmp_path / "app.exe").touch()
+    missing = tmp_path / "missing"
+    result = OSFileSystemAdapter().find_executables([tmp_path, missing])
+    assert not result.complete
+    assert any(issue.path == missing for issue in result.issues)

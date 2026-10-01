@@ -139,7 +139,10 @@ class OSFileSystemAdapter:
             if len(search_roots) > limits.max_roots:
                 stop(Path("."), "Límite de raíces alcanzado")
             pending: list[Path] = []
-            for path in self.prune_redundant_paths(search_roots):
+            # Validate every configured root before pruning overlaps: a missing child
+            # must remain an omission even when its existing parent is also configured.
+            for configured in search_roots:
+                path = Path(os.path.abspath(configured))
                 check(path)
                 try:
                     if self._is_remote(path):
@@ -160,6 +163,8 @@ class OSFileSystemAdapter:
                         pending.append(path)
                 except (OSError, ValueError) as ex:
                     issue(path, f"Raíz inaccesible ({type(ex).__name__})")
+            pending = self.prune_redundant_paths(pending)
+            retained_chars = sum(len(str(path)) for path in pending)
             pending.reverse()
             while pending:
                 path = pending.pop()
