@@ -55,6 +55,35 @@ paths, inspect the current managed-rule state, block detected executables, or
 remove rules previously created by JameFirewall. Blocking creates both inbound
 and outbound rules for each selected executable.
 
+Settings edits, including automatic discovery, remain a draft until **Save**.
+Saving replaces the complete list once; a failed save keeps the previous settings
+and leaves the dialog open for retry. **Cancel** discards the draft. An empty
+directory list is preserved as an intentional setting.
+
+On Windows, production configuration is shared at the system's ProgramData known
+folder under `JameFirewall/jamefirewall_config.json`, normally
+`C:\ProgramData\JameFirewall\jamefirewall_config.json`. Windows resolves this
+location independently of the process's `ProgramData` environment variable.
+The folder and file have protected permissions for administrators and SYSTEM.
+Unexpected ownership, permissions, or storage links prevent startup.
+
+On first use, an existing `jamefirewall_config.json` beside the executable (or in
+the source tree when running from source) is validated and copied into protected
+storage. The original is retained. Once protected configuration exists, it takes
+precedence over the legacy copy, even if the protected copy is invalid.
+Configuration accepts only a `directories` array of absolute paths, with at most
+256 entries, 32,767 characters per path, and a 1 MiB UTF-8 JSON file. Supported root
+variables are `ProgramFiles`, `ProgramFiles(x86)`, `ProgramData`, `USERPROFILE`,
+`APPDATA`, and `LOCALAPPDATA`; they expand for the elevated process's environment.
+
+Invalid or unreadable configuration shows a startup error and preserves the
+file. Correct it as an administrator, or move it aside to restore from the valid
+legacy copy or defaults. Verify unexpected permissions before replacing storage.
+Saving flushes a temporary file in the same folder before replacing the current
+file. This preserves the previous file on failures before replacement; it does
+not guarantee recovery from storage-device failure or power loss. A terminated
+process can leave a `.jamefirewall-*.tmp` file that is never loaded as configuration.
+
 Managed rules use a stable native identity for each normalized Windows program path
 and traffic direction, plus a dedicated `JameFirewall.v1` group. Repeating a block
 operation repairs incomplete or disabled managed rules. The result is checked

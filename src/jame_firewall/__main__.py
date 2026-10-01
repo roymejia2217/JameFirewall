@@ -5,7 +5,7 @@ import ctypes
 import sys
 import traceback
 
-from jame_firewall.core.exceptions import InstanceCoordinationError
+from jame_firewall.core.exceptions import ConfigStorageError, InstanceCoordinationError
 from jame_firewall.core.ports import InstanceLockPort
 from jame_firewall.infrastructure.container import AppContainer
 from jame_firewall.infrastructure.os.instance_lock import WindowsInstanceLock
@@ -61,6 +61,9 @@ def main() -> None:
                 app.dispose()
             # If worker cleanup fails, retain ownership until actual process termination.
             instance.release()
+    except ConfigStorageError as ex:
+        print(f"JameFirewall configuration error: {ex}", file=sys.stderr)
+        _notify_startup(str(ex), error=True)
     except InstanceCoordinationError as ex:
         print(f"JameFirewall coordination error: {ex}", file=sys.stderr)
         _notify_startup(f"No se pudo comprobar la exclusión entre instancias: {ex}", error=True)

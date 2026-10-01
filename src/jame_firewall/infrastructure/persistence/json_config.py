@@ -8,8 +8,10 @@ import stat
 import sys
 import tempfile
 from pathlib import Path
+from typing import Protocol
 
 from jame_firewall.core.exceptions import ConfigStorageError
+from jame_firewall.infrastructure.persistence.windows_security import WindowsConfigSecurity
 
 DEFAULT_CONFIG_FILENAME = "jamefirewall_config.json"
 MAX_CONFIG_BYTES = 1024 * 1024
@@ -24,6 +26,13 @@ ENV_ROOTS = (
     "ProgramData",
 )
 _ROOT_TOKEN = re.compile(r"^(?:%([^%]+)%|\$\{([^}]+)\}|\$([\w()]+))(?=[\\/]|$)")
+
+
+class _ConfigSecurity(Protocol):
+    def default_directory(self) -> Path: ...
+    def ensure_directory(self, path: Path) -> None: ...
+    def verify_file(self, path: Path) -> None: ...
+    def protect_file(self, path: Path) -> None: ...
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -52,8 +61,24 @@ def _check_regular_file(path: Path) -> bool:
 class JsonConfigAdapter:
     """Implementación de ConfigRepositoryPort con serialización portable en JSON."""
 
-    def __init__(self, config_path: Path | None = None) -> None:
+    def __init__(
+        self, config_path: Path | None = None, *, security: _ConfigSecurity | None = None
+    ) -> None:
+        # Explicit paths belong to dependency-injected callers, never a production CLI switch.
+        self._security = security
+        if config_path is None and sys.platform == "win32" and self._security is None:
+            self._security = WindowsConfigSecurity()
+        self._legacy_path: Path | None = None
+        if config_path is None and self._security is not None:
+            self._legacy_path = self._resolve_default_config_path()
+            config_path = self._security.default_directory() / DEFAULT_CONFIG_FILENAME
         self.config_path = config_path or self._resolve_default_config_path()
+
+    def _prepare_storage(self) -> None:
+        if self._security is not None:
+            self._security.ensure_directory(self.config_path.parent)
+            if _check_regular_file(self.config_path):
+                self._security.verify_file(self.config_path)
 
     def _resolve_default_config_path(self) -> Path:
         """Determina la ruta base de configuración compatible con PyInstaller."""
@@ -136,12 +161,26 @@ class JsonConfigAdapter:
 
     def load_paths(self) -> list[Path]:
         """Carga los directorios configurados desde JSON o genera los predeterminados."""
+        source_path = self.config_path
         try:
+            self._prepare_storage()
             paths = self._read_paths(self.config_path)
-            return self._get_dynamic_default_paths() if paths is None else paths
+            if paths is not None:
+                return paths
+            if self._legacy_path is not None:
+                source_path = self._legacy_path
+                paths = self._read_paths(self._legacy_path)
+                if paths is None:
+                    paths = self._get_dynamic_default_paths()
+                if not self.save_paths(paths):
+                    raise ConfigStorageError(
+                        f"No se pudo crear {self.config_path}. La configuración anterior se conserva."
+                    )
+                return paths
+            return self._get_dynamic_default_paths()
         except (OSError, ValueError, RecursionError) as ex:
             raise ConfigStorageError(
-                f"No se pudo cargar {self.config_path}. El archivo se conserva; "
+                f"No se pudo cargar {source_path}. El archivo se conserva; "
                 "corrija su contenido o muévalo para restablecer la configuración."
             ) from ex
 
@@ -149,6 +188,7 @@ class JsonConfigAdapter:
         """Guarda la lista de directorios en JSON aplicando sanitización portable."""
         temporary: Path | None = None
         try:
+            self._prepare_storage()
             if len(paths) > MAX_DIRECTORIES:
                 return False
             _check_regular_file(self.config_path)
@@ -170,6 +210,8 @@ class JsonConfigAdapter:
                 target.write(payload)
                 target.flush()
                 os.fsync(target.fileno())
+            if self._security is not None:
+                self._security.protect_file(temporary)
             os.replace(temporary, self.config_path)
             return True
         except (OSError, ValueError, ConfigStorageError):

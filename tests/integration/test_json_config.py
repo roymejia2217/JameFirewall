@@ -136,3 +136,70 @@ def test_symlink_config_is_rejected_without_touching_target(tmp_path: Path) -> N
         JsonConfigAdapter(link).load_paths()
     assert not JsonConfigAdapter(link).save_paths([tmp_path])
     assert target.read_text(encoding="utf-8") == '{"directories": []}'
+
+
+class StorageSecurity:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.refuse = False
+        self.protected: list[Path] = []
+
+    def default_directory(self) -> Path:
+        return self.root
+
+    def ensure_directory(self, path: Path) -> None:
+        if self.refuse:
+            raise ConfigStorageError("Untrusted permissions")
+        path.mkdir(exist_ok=True)
+
+    def verify_file(self, path: Path) -> None:
+        if self.refuse:
+            raise ConfigStorageError("Untrusted permissions")
+
+    def protect_file(self, path: Path) -> None:
+        self.protected.append(path)
+
+
+def test_default_storage_migrates_legacy_once_and_preserves_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text(json.dumps({"directories": [str(tmp_path / "old-app")]}), encoding="utf-8")
+    source = legacy.read_bytes()
+    security = StorageSecurity(tmp_path / "secure")
+    monkeypatch.setattr(JsonConfigAdapter, "_resolve_default_config_path", lambda self: legacy)
+    adapter = JsonConfigAdapter(security=security)
+    assert adapter.load_paths() == [(tmp_path / "old-app").resolve()]
+    assert adapter.config_path.parent == security.root
+    assert security.protected
+    assert legacy.read_bytes() == source
+    legacy.write_text("invalid later legacy", encoding="utf-8")
+    assert adapter.load_paths() == [(tmp_path / "old-app").resolve()]
+
+
+def test_invalid_legacy_is_preserved_and_not_replaced_with_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text("broken", encoding="utf-8")
+    security = StorageSecurity(tmp_path / "secure")
+    monkeypatch.setattr(JsonConfigAdapter, "_resolve_default_config_path", lambda self: legacy)
+    adapter = JsonConfigAdapter(security=security)
+    with pytest.raises(ConfigStorageError):
+        adapter.load_paths()
+    assert legacy.read_text(encoding="utf-8") == "broken"
+    assert not adapter.config_path.exists()
+
+
+def test_untrusted_storage_never_loads_or_overwrites_config(tmp_path: Path) -> None:
+    security = StorageSecurity(tmp_path / "secure")
+    security.root.mkdir()
+    config = security.root / "config.json"
+    config.write_text('{"directories": []}', encoding="utf-8")
+    original = config.read_bytes()
+    security.refuse = True
+    adapter = JsonConfigAdapter(config, security=security)
+    with pytest.raises(ConfigStorageError):
+        adapter.load_paths()
+    assert not adapter.save_paths([tmp_path])
+    assert config.read_bytes() == original
