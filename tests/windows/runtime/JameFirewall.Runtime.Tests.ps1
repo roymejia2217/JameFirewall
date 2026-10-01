@@ -6,8 +6,12 @@ using System.Text;
 public static class JameWindowProbe {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder name, int maximum);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr GetDlgItem(IntPtr dialog, int controlId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out UIntPtr result);
 }
 "@
 
@@ -92,9 +96,16 @@ Describe "JameFirewall packaged Windows runtime" {
                 Should -BeGreaterThan 0
             $dialogClass.ToString() | Should -Be "#32770"
             # Acknowledge only the duplicate notice owned by this isolated runtime fixture.
-            [JameWindowProbe]::SendMessage(
-                $duplicateProcess.MainWindowHandle, 0x111, [IntPtr]::new(1), [IntPtr]::Zero
-            ) | Out-Null
+            $acceptButton = [JameWindowProbe]::GetDlgItem($duplicateProcess.MainWindowHandle, 1)
+            $acceptButton | Should -Not -Be ([IntPtr]::Zero)
+            $messageResult = [UIntPtr]::Zero
+            # BM_CLICK delivers the button notification expected by the native message box.
+            $sent = [JameWindowProbe]::SendMessageTimeout(
+                $acceptButton, 0xF5, [IntPtr]::Zero, [IntPtr]::Zero,
+                2, 5000, [ref]$messageResult
+            )
+            $messageError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            $sent | Should -Not -Be ([IntPtr]::Zero) -Because "BM_CLICK must succeed (Win32 error $messageError)"
             $duplicateProcess.WaitForExit(15000) | Should -BeTrue
             $duplicateProcess.ExitCode | Should -Be 0
             $windowProcess.Refresh()
