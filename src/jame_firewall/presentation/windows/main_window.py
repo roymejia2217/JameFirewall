@@ -52,6 +52,14 @@ class JameFirewallApp:
             with contextlib.suppress(tk.TclError, AttributeError):
                 self.root.iconbitmap(str(icon_path))
 
+    def dispose(self) -> None:
+        """Finish workers even if the main loop fails before normal window closure."""
+        self._closing = True
+        self._container.cancellation.cancel()
+        self.dispatcher.shutdown(wait=True)
+        with contextlib.suppress(tk.TclError):
+            self.root.destroy()
+
     def _setup_styles(self) -> None:
         style = ttk.Style()
         style.configure("TButton", font=("Helvetica", 9, "bold"))
@@ -357,14 +365,6 @@ class JameFirewallApp:
             self.root.destroy()
         else:
             self.root.after(100, self._wait_for_close)
-
-    def dispose(self) -> None:
-        """Finish workers even if the main loop fails before normal window closure."""
-        self._closing = True
-        self._container.cancellation.cancel()
-        self.dispatcher.shutdown(wait=True)
-        with contextlib.suppress(tk.TclError):
-            self.root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()

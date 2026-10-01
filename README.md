@@ -55,6 +55,13 @@ paths, inspect the current managed-rule state, block detected executables, or
 remove rules previously created by JameFirewall. Blocking creates both inbound
 and outbound rules for each selected executable.
 
+Only one JameFirewall instance can operate on a Windows computer, across user
+sessions and installations. A second launch shows a notice without loading
+configuration or opening another control window. Administrator elevation happens
+before exclusive ownership is acquired; declining elevation ends startup.
+Ownership is retained until operation workers finish closing. After an unexpected
+termination, reopening performs the usual audit of the actual firewall policy.
+
 Managed rules use a stable native identity for each normalized Windows program path
 and traffic direction, plus a dedicated `JameFirewall.v1` group. Repeating a block
 operation repairs incomplete or disabled managed rules. The result is checked
@@ -73,13 +80,6 @@ not establish ownership. Review their program paths and remove them explicitly i
 Windows Defender Firewall if they are no longer wanted; do not delete other rules
 based solely on matching text. Deactivation removes only verified rules in the new
 managed namespace and reports individual rules rather than unique display names.
-
-Only one JameFirewall instance can operate on a Windows computer, across user
-sessions and installations. A second launch shows a notice without loading
-configuration or opening another control window. Administrator elevation happens
-before exclusive ownership is acquired; declining elevation ends startup.
-Ownership is retained until operation workers finish closing. After an unexpected
-termination, reopening performs the usual audit of the actual firewall policy.
 
 Operations run one at a time; activation, deactivation, refresh, and configuration
 remain unavailable until the current operation and its visual updates complete.
