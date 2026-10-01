@@ -358,5 +358,13 @@ class JameFirewallApp:
         else:
             self.root.after(100, self._wait_for_close)
 
+    def dispose(self) -> None:
+        """Finish workers even if the main loop fails before normal window closure."""
+        self._closing = True
+        self._container.cancellation.cancel()
+        self.dispatcher.shutdown(wait=True)
+        with contextlib.suppress(tk.TclError):
+            self.root.destroy()
+
     def run(self) -> None:
         self.root.mainloop()

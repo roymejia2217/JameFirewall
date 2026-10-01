@@ -23,3 +23,7 @@ class RegistryScanError(JameFirewallError):
 
 class OperationCancelledError(JameFirewallError):
     """El cierre interrumpió la operación antes del siguiente paso de I/O."""
+
+
+class InstanceCoordinationError(JameFirewallError):
+    """No se pudo establecer o liberar la exclusión segura entre procesos."""

@@ -78,3 +78,16 @@ class UACPort(Protocol):
     def request_elevation(self) -> bool:
         """Solicita la elevación del proceso mediante UAC."""
         ...
+
+
+@runtime_checkable
+class InstanceLockPort(Protocol):
+    """Lifetime exclusion between application processes, owned by the startup thread."""
+
+    def acquire(self) -> bool:
+        """Acquire without waiting; false means busy, coordination failures raise."""
+        ...
+
+    def release(self) -> None:
+        """Release on the acquiring thread; harmless when not acquired."""
+        ...
