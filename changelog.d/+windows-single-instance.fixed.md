@@ -5,3 +5,5 @@ Preserve complete configuration on failed saves, retain unsaved edits for retry,
 Migrate validated existing settings to protected shared Windows storage without deleting the original. Refuse unexpected storage permissions and preserve invalid settings for diagnosis.
 
 Report incomplete executable scans and refuse activation without changing existing rules. Bound local traversal, omit links and reparse points explicitly, and keep directory autodetection responsive without publishing canceled drafts.
+
+Bound command output and reclaim contained Windows subprocesses on completion, cancellation or failure. Report uncertain command outcomes without continuing mutations or claiming protection.

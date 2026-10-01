@@ -31,7 +31,9 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    real junctions, cycles and denied directory-list permissions, enforce finite traversal
    budgets and cancellation, and require incomplete scope to remain visible. The Settings
    contract verifies that discovery leaves the Tk event loop responsive and that Cancel
-   suppresses a worker's late result.
+   suppresses a worker's late result. Native process contracts require timeout, overflow,
+   cancellation and normal parent exit to stop pipe-owning descendants. Repeated runs
+   inspect handle/thread retention; failed Job assignment must never execute the payload.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
    Add control, verifies Cancel discards edits, injects a replacement failure through the real

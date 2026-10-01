@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from jame_firewall.core.entities import RuleDirection, SystemStatus
+from jame_firewall.core.entities import ProcessResult, RuleDirection, SystemStatus
 from jame_firewall.core.rule_identity import managed_rule_name
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
 from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
@@ -26,15 +26,15 @@ pytestmark = [
 class NativeProbeRunner(SystemProcessRunner):
     """Preserva errores del proveedor para diagnosticar fallos de aceptación."""
 
-    def run(self, args: list[str], timeout: float | None = 30.0) -> tuple[int, str, str]:
+    def run(self, args: list[str], timeout: float | None = 30.0) -> ProcessResult:
         result = super().run(args, timeout)
-        if result[0] != 0:
-            print("Firewall provider failure:", result[2])
+        if not result.succeeded:
+            print("Firewall provider failure:", result.status, result.detail, result.stderr)
         return result
 
 
 def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) -> None:
-    """Exercise scan -> netsh IN/OUT rules -> audit -> cleanup on an ephemeral rule namespace."""
+    """Exercise scan -> native Inbound/Outbound rules -> audit -> cleanup on an ephemeral rule namespace."""
     uac = WindowsUACAdapter()
     assert uac.is_admin(), "windows-native CI must run with administrative privileges"
 
@@ -112,7 +112,7 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
 
         inbound = managed_rule_name(probe_exe, RuleDirection.IN, suffix)
         outbound = managed_rule_name(probe_exe, RuleDirection.OUT, suffix)
-        code, _, error = runner.run(
+        completed = runner.run(
             [
                 "powershell",
                 "-NoProfile",
@@ -125,7 +125,7 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
                 "-Protocol TCP -RemotePort 443",
             ]
         )
-        assert code == 0, error
+        assert completed.succeeded, completed
         assert audit.execute([tmp_path]).status == SystemStatus.PARTIAL
         repaired = block.execute([tmp_path])
         assert repaired.blocked_count == 1
@@ -134,7 +134,7 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
         assert audit.execute([tmp_path]).status == SystemStatus.PROTECTED
 
         # Una regla habilitada pero restringida tampoco acredita cobertura completa.
-        code, _, error = runner.run(
+        completed = runner.run(
             [
                 "powershell",
                 "-NoProfile",
@@ -145,7 +145,7 @@ def test_real_windows_firewall_block_audit_unblock_round_trip(tmp_path: Path) ->
                 "-Protocol TCP -RemotePort 443",
             ]
         )
-        assert code == 0, error
+        assert completed.succeeded, completed
         assert audit.execute([tmp_path]).status == SystemStatus.PARTIAL
         assert block.execute([tmp_path]).failed_count == 0
         assert audit.execute([tmp_path]).status == SystemStatus.PROTECTED

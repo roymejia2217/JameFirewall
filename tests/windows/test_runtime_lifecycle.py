@@ -34,7 +34,7 @@ def test_native_powershell_cannot_load_user_executable_or_module(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setenv("PSModulePath", str(module.parent))
-    code, output, error = SystemProcessRunner().run(
+    completed = SystemProcessRunner().run(
         [
             "powershell",
             "-NoProfile",
@@ -47,8 +47,8 @@ def test_native_powershell_cannot_load_user_executable_or_module(
             "SearchPath=$env:PSModulePath; PSHome=$PSHOME} | ConvertTo-Json -Compress",
         ]
     )
-    assert code == 0, error
-    result = json.loads(output)
+    assert completed.succeeded, completed
+    result = json.loads(completed.stdout)
     trusted = Path(result["PSHome"]) / "Modules"
     assert Path(result["SearchPath"]) == trusted
     assert Path(result["ModulePath"]).is_relative_to(trusted)
@@ -56,9 +56,9 @@ def test_native_powershell_cannot_load_user_executable_or_module(
 
 def test_native_close_waits_for_worker_and_drops_late_ui_updates() -> None:
     # Closing the product terminates its process. Do not reinitialize Tk in pytest's interpreter.
-    code, output, error = SystemProcessRunner().run([sys.executable, str(Path(__file__).resolve())])
-    assert code == 0, error
-    assert "CLOSE_PROBE_OK" in output
+    completed = SystemProcessRunner().run([sys.executable, str(Path(__file__).resolve())])
+    assert completed.succeeded, completed
+    assert "CLOSE_PROBE_OK" in completed.stdout
 
 
 def _exercise_native_close() -> None:

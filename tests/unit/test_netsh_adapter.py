@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jame_firewall.core.entities import FirewallRule, RuleDirection
+from jame_firewall.core.entities import FirewallRule, ProcessResult, ProcessStatus, RuleDirection
 from jame_firewall.core.exceptions import FirewallExecutionError
 from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
 from jame_firewall.infrastructure.firewall.netsh_adapter import WindowsNetshAdapter
@@ -38,7 +38,9 @@ def rule_json() -> dict[str, Any]:
 
 def adapter_with_response(output: str = "", code: int = 0) -> tuple[WindowsNetshAdapter, MagicMock]:
     runner = MagicMock()
-    runner.run.return_value = (code, output, "provider error" if code else "")
+    runner.run.return_value = ProcessResult(
+        ProcessStatus.COMPLETED, code, output, "provider error" if code else ""
+    )
     return WindowsNetshAdapter(runner=runner), runner
 
 
@@ -290,3 +292,54 @@ def test_inventory_rejects_invalid_enforcement_states(states: object) -> None:
     adapter, _ = adapter_with_response(inventory_json([dto]))
     with pytest.raises(FirewallExecutionError):
         adapter.list_inventory(["jame-block"])
+
+
+@pytest.mark.parametrize(
+    "status", [ProcessStatus.TIMED_OUT, ProcessStatus.OUTPUT_LIMIT, ProcessStatus.START_FAILED]
+)
+def test_incomplete_process_never_parses_inventory_even_with_valid_partial_json(
+    status: ProcessStatus,
+) -> None:
+    adapter, runner = adapter_with_response()
+    runner.run.return_value = ProcessResult(
+        status, 0, inventory_json([rule_json()]), "partial output"
+    )
+    with pytest.raises(FirewallExecutionError):
+        adapter.list_inventory(["jame-block"])
+    runner.run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "status", [ProcessStatus.TIMED_OUT, ProcessStatus.OUTPUT_LIMIT, ProcessStatus.START_FAILED]
+)
+@pytest.mark.parametrize("operation", ["add", "delete"])
+def test_incomplete_mutation_process_aborts_instead_of_returning_false_or_success(
+    status: ProcessStatus, operation: str
+) -> None:
+    adapter, runner = adapter_with_response()
+    runner.run.return_value = ProcessResult(status, 0, "", "incomplete process")
+    path = Path("C:/Apps/helper.exe")
+    name = managed_rule_name(path, RuleDirection.OUT)
+    with pytest.raises(FirewallExecutionError):
+        if operation == "add":
+            adapter.add_rule(name, path, RuleDirection.OUT)
+        else:
+            adapter.delete_rule(FirewallRule(name, path, RuleDirection.OUT, group=MANAGED_GROUP))
+    runner.run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "expected"),
+    [
+        (ProcessStatus.COMPLETED, 0, True),
+        (ProcessStatus.COMPLETED, 1, False),
+        (ProcessStatus.COMPLETED, None, False),
+        (ProcessStatus.TIMED_OUT, 0, False),
+        (ProcessStatus.OUTPUT_LIMIT, 0, False),
+        (ProcessStatus.START_FAILED, 0, False),
+    ],
+)
+def test_process_result_success_requires_completed_zero_exit(
+    status: ProcessStatus, code: int | None, expected: bool
+) -> None:
+    assert ProcessResult(status, code).succeeded is expected

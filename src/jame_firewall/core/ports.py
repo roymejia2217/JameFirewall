@@ -3,15 +3,21 @@
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection, ScanResult
+from jame_firewall.core.entities import (
+    FirewallInventory,
+    FirewallRule,
+    ProcessResult,
+    RuleDirection,
+    ScanResult,
+)
 
 
 @runtime_checkable
 class ProcessRunnerPort(Protocol):
     """Abstracción para la ejecución de procesos del sistema operativo."""
 
-    def run(self, args: list[str], timeout: float | None = 30.0) -> tuple[int, str, str]:
-        """Ejecuta un subproceso devolviendo (returncode, stdout, stderr)."""
+    def run(self, args: list[str], timeout: float | None = 30.0) -> ProcessResult:
+        """Return bounded output and explicit completion; cancellation raises after cleanup."""
         ...
 
 

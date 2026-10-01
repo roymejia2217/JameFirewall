@@ -1,6 +1,7 @@
 """Cancellation stops future work without pretending to undo firewall mutations."""
 
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -17,27 +18,31 @@ def test_close_prevents_any_further_subprocess(monkeypatch: pytest.MonkeyPatch) 
     token = CancellationToken()
     runner = SystemProcessRunner(cancellation=token)
     launch = MagicMock()
-    monkeypatch.setattr(subprocess, "run", launch)
+    monkeypatch.setattr(subprocess, "Popen", launch)
     token.cancel()
     with pytest.raises(OperationCancelledError):
         runner.run(["powershell", "-Command", "query"])
     launch.assert_not_called()
 
 
-def test_cancellation_during_command_stops_next_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    token = CancellationToken()
+def test_cancellation_during_command_is_reported_before_any_next_command() -> None:
+    class CancelAfterLaunch(CancellationToken):
+        def __init__(self) -> None:
+            super().__init__()
+            self.checks = 0
+
+        def check(self) -> None:
+            self.checks += 1
+            if self.checks >= 2:
+                self.cancel()
+            super().check()
+
+    token = CancelAfterLaunch()
     runner = SystemProcessRunner(cancellation=token)
-
-    def finish_current(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
-        token.cancel()
-        return subprocess.CompletedProcess([], 0, b"committed", b"")
-
-    launch = MagicMock(side_effect=finish_current)
-    monkeypatch.setattr(subprocess, "run", launch)
-    assert runner.run(["command"])[0] == 0
     with pytest.raises(OperationCancelledError):
-        runner.run(["next mutation"])
-    assert launch.call_count == 1
+        runner.run([sys.executable, "-c", "import time; time.sleep(0.2)"])
+    with pytest.raises(OperationCancelledError):
+        runner.run([sys.executable, "-c", "print('must not start')"])
 
 
 def test_scanning_stops_between_directories(

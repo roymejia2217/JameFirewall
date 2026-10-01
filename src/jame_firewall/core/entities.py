@@ -5,6 +5,29 @@ from enum import StrEnum
 from pathlib import Path
 
 
+class ProcessStatus(StrEnum):
+    COMPLETED = "completed"
+    TIMED_OUT = "timed_out"
+    OUTPUT_LIMIT = "output_limit"
+    START_FAILED = "start_failed"
+    IO_FAILED = "io_failed"
+
+
+@dataclass(frozen=True)
+class ProcessResult:
+    """Captured streams are usable only when the process finished normally."""
+
+    status: ProcessStatus
+    returncode: int | None
+    stdout: str = ""
+    stderr: str = ""
+    detail: str = ""
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == ProcessStatus.COMPLETED and self.returncode == 0
+
+
 class RuleDirection(StrEnum):
     """Dirección del tráfico de red en Windows Firewall."""
 
