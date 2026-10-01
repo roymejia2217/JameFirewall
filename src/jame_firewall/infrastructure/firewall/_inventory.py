@@ -69,7 +69,8 @@ function Read-Candidates($store, $parameter, $pattern, $target) {
     } catch {
         # NetSecurity reports exact-selector absence as ObjectNotFound. Accept only that
         # provider identity, with no rows emitted; access/CIM/transport/quota failures propagate.
-        $emptyId = 'CmdletizationQuery_NotFound_' + $parameter + ',Get-NetFirewallRule'
+        $nativeProperty = @{ Group = 'RuleGroup'; Name = 'InstanceID'; DisplayName = 'DisplayName' }[$parameter]
+        $emptyId = 'CmdletizationQuery_NotFound_' + $nativeProperty + ',Get-NetFirewallRule'
         if ($seen.Count -ne 0 -or $_.CategoryInfo.Category -ne 'ObjectNotFound' -or
             $_.FullyQualifiedErrorId -ne $emptyId) { throw }
     }

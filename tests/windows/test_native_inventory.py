@@ -160,3 +160,23 @@ def test_native_inventory_rejects_provider_limits_and_faults_before_filter_queri
         "fake-absence": "fixture failure",
     }
     assert expected[fault] in str(exc.value)
+
+
+def test_native_empty_group_uses_cim_property_identity() -> None:
+    runner = SystemProcessRunner()
+    group = "absent-jame-" + uuid.uuid4().hex
+    script = (
+        "$ErrorActionPreference = 'Stop'; try { "
+        f"Get-NetFirewallRule -PolicyStore PersistentStore -Group '{group}' | Out-Null; "
+        "throw 'Expected exact missing-group error' } catch { "
+        "[PSCustomObject]@{ Id = $_.FullyQualifiedErrorId; "
+        "Category = [string]$_.CategoryInfo.Category } | ConvertTo-Json -Compress }"
+    )
+    result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
+    assert result.succeeded, result
+    assert json.loads(result.stdout) == {
+        "Id": "CmdletizationQuery_NotFound_RuleGroup,Get-NetFirewallRule",
+        "Category": "ObjectNotFound",
+    }
+    # Production must accept absence and still retrieve all profiles, not hide other errors.
+    assert WindowsNetshAdapter(runner).list_inventory([group]).rules == ()
