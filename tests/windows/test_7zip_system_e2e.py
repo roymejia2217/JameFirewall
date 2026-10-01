@@ -10,6 +10,7 @@ import time
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from tests.windows.firewall_probe import (
@@ -19,6 +20,7 @@ from tests.windows.firewall_probe import (
 )
 
 from jame_firewall.infrastructure.container import AppContainer
+from jame_firewall.infrastructure.persistence.json_config import JsonConfigAdapter
 from jame_firewall.presentation import constants as C
 from jame_firewall.presentation.windows.config_window import ConfigWindow
 from jame_firewall.presentation.windows.main_window import JameFirewallApp
@@ -119,16 +121,59 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
             lambda **_: str(seven_zip_dir),
         )
 
+        original_config = config_path.read_bytes()
+        original_directories = container.config_use_case.get_directories()
+
+        # Cancel discards an edited draft without persisting or reporting success.
+        app.config_button.invoke()
+        app.root.update()
+        cancelled_dialog = _find_config_dialog(app)
+        cancelled_dialog.btn_add.invoke()
+        assert str(seven_zip_dir) in cancelled_dialog.current_dirs
+        cancelled_dialog.btn_cancel.invoke()
+        app.root.update()
+        assert not cancelled_dialog.winfo_exists()
+        assert config_path.read_bytes() == original_config
+        assert container.config_use_case.get_directories() == original_directories
+        assert C.MSG_CONF_SAVED not in _log_text(app)
+
         app.config_button.invoke()
         app.root.update()
         dialog = _find_config_dialog(app)
-
         dialog.btn_add.invoke()
-        assert str(seven_zip_dir) in dialog.current_dirs
+        edited_directories = list(dialog.current_dirs)
+        assert str(seven_zip_dir) in edited_directories
+
+        # A real atomic-write failure must leave the modal open for a safe retry.
+        error_notice = MagicMock()
+
+        def fail_replace(source: object, destination: object) -> None:
+            raise OSError("injected configuration replacement failure")
+
+        with monkeypatch.context() as failing_save:
+            failing_save.setattr(
+                "jame_firewall.infrastructure.persistence.json_config.os.replace", fail_replace
+            )
+            failing_save.setattr(
+                "jame_firewall.presentation.windows.config_window.messagebox.showerror",
+                error_notice,
+            )
+            dialog.btn_save.invoke()
+            app.root.update()
+
+        error_notice.assert_called_once()
+        assert dialog.winfo_exists()
+        assert dialog.current_dirs == edited_directories
+        assert config_path.read_bytes() == original_config
+        assert container.config_use_case.get_directories() == original_directories
+        assert C.MSG_CONF_SAVED not in _log_text(app)
 
         dialog.btn_save.invoke()
         app.root.update()
+        assert not dialog.winfo_exists()
         assert seven_zip_dir.resolve() in container.config_use_case.get_directories()
+        assert seven_zip_dir.resolve() in JsonConfigAdapter(config_path).load_paths()
+        assert C.MSG_CONF_SAVED in _log_text(app)
 
         app.block_button.invoke()
         _pump_until(

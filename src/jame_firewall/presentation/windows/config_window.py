@@ -148,8 +148,13 @@ class ConfigWindow(ttk.Toplevel):
 
     def auto_detect(self) -> None:
         """Ejecuta auto-descubrimiento en Registro y actualiza la lista visual."""
-        new_count = self._manage_config_uc.auto_detect()
-        updated_dirs = [str(p) for p in self._manage_config_uc.get_directories()]
+        updated_dirs = [
+            str(p)
+            for p in self._manage_config_uc.discover_directories(
+                [Path(d) for d in self.current_dirs]
+            )
+        ]
+        new_count = len(updated_dirs) - len(self.current_dirs)
 
         self.listbox.delete(0, END)
         self.current_dirs = updated_dirs
@@ -163,12 +168,15 @@ class ConfigWindow(ttk.Toplevel):
 
     def save_and_close(self) -> None:
         """Persiste los directorios mediante el caso de uso y cierra el modal."""
-        # Limpiar y guardar todos los elementos
         paths_to_save = [Path(d) for d in self.current_dirs]
-        for existing in self._manage_config_uc.get_directories():
-            self._manage_config_uc.remove_directory(existing)
-        for p in paths_to_save:
-            self._manage_config_uc.add_directory(p)
+        if not self._manage_config_uc.replace_directories(paths_to_save):
+            messagebox.showerror(
+                "JameFirewall",
+                "No se pudo guardar la configuración. Se conserva la anterior. "
+                "Revise las rutas y los permisos o el espacio disponible, y vuelva a intentar.",
+                parent=self,
+            )
+            return
 
         if self._on_saved_callback:
             self._on_saved_callback(f"{C.MSG_CONF_SAVED}: {len(self.current_dirs)} rutas")
