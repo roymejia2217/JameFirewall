@@ -175,6 +175,48 @@ def test_7zip_path_toggle_creates_and_removes_real_firewall_rules(
         assert seven_zip_dir.resolve() in JsonConfigAdapter(config_path).load_paths()
         assert C.MSG_CONF_SAVED in _log_text(app)
 
+        # A configured folder can disappear after saving: partial scans must not mutate.
+        missing_root = tmp_path / "removed-after-configuration"
+        missing_root.mkdir()
+        monkeypatch.setattr(
+            "jame_firewall.presentation.windows.config_window.filedialog.askdirectory",
+            lambda **_: str(missing_root),
+        )
+        app.config_button.invoke()
+        app.root.update()
+        incomplete_dialog = _find_config_dialog(app)
+        incomplete_dialog.btn_add.invoke()
+        incomplete_dialog.btn_save.invoke()
+        app.root.update()
+        assert missing_root in container.config_use_case.get_directories()
+        assert missing_root in JsonConfigAdapter(config_path).load_paths()
+        missing_root.rmdir()
+
+        app.block_button.invoke()
+        _pump_until(
+            app,
+            lambda: str(app.block_button.cget("state")) == "normal",
+            timeout=FIREWALL_OPERATION_TIMEOUT_SECONDS,
+        )
+        incomplete_log = _log_text(app)
+        assert app.status_label.cget("text") == C.STATUS_PARTIAL, incomplete_log
+        assert "Escaneo incompleto" in incomplete_log, incomplete_log
+        assert str(missing_root) in incomplete_log, incomplete_log
+        assert "no se crearon reglas" in incomplete_log, incomplete_log
+        assert C.MSG_SUCCESS_BLOCK not in incomplete_log, incomplete_log
+        assert not _rules_for_programs(expected_rule_names, expected_executables)
+
+        app.config_button.invoke()
+        app.root.update()
+        repaired_dialog = _find_config_dialog(app)
+        missing_index = repaired_dialog.current_dirs.index(str(missing_root))
+        repaired_dialog.listbox.selection_set(missing_index)
+        repaired_dialog.btn_remove.invoke()
+        repaired_dialog.btn_save.invoke()
+        app.root.update()
+        assert missing_root not in container.config_use_case.get_directories()
+        assert missing_root not in JsonConfigAdapter(config_path).load_paths()
+
         app.block_button.invoke()
         _pump_until(
             app,

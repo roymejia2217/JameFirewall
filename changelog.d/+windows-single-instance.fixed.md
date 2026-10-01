@@ -3,3 +3,5 @@ Prevent multiple JameFirewall instances from modifying firewall rules or configu
 Preserve complete configuration on failed saves, retain unsaved edits for retry, and discard drafts on Cancel. Report invalid configuration instead of silently using defaults.
 
 Migrate validated existing settings to protected shared Windows storage without deleting the original. Refuse unexpected storage permissions and preserve invalid settings for diagnosis.
+
+Report incomplete executable scans and refuse activation without changing existing rules. Bound local traversal, omit links and reparse points explicitly, and keep directory autodetection responsive without publishing canceled drafts.

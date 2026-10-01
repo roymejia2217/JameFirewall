@@ -56,6 +56,35 @@ class ExecutableTarget:
 
 
 @dataclass(frozen=True)
+class ScanIssue:
+    """One bounded diagnostic about an unexamined portion of the configured scope."""
+
+    path: Path
+    reason: str
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    """Observed targets and completeness travel together across every scan consumer."""
+
+    executables: tuple[Path, ...]
+    issues: tuple[ScanIssue, ...] = ()
+    visited_directories: int = 0
+    visited_entries: int = 0
+
+    @property
+    def complete(self) -> bool:
+        return not self.issues
+
+    @property
+    def detail(self) -> str:
+        if self.complete:
+            return ""
+        samples = "; ".join(f"{issue.reason}: {str(issue.path)[:256]}" for issue in self.issues[:3])
+        return f"Escaneo incompleto ({len(self.issues)} incidencias); {samples}"
+
+
+@dataclass(frozen=True)
 class BlockSummary:
     """Resumen inmutable de una operación de bloqueo de ejecutables."""
 
@@ -63,6 +92,7 @@ class BlockSummary:
     skipped_count: int
     failed_count: int
     errors: list[str] = field(default_factory=list)
+    scan_complete: bool = True
 
 
 @dataclass(frozen=True)

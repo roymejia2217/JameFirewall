@@ -1,5 +1,6 @@
 """Caso de uso para la administración y auto-detección de directorios de búsqueda."""
 
+import os
 from pathlib import Path
 
 from jame_firewall.core.ports import (
@@ -29,24 +30,24 @@ class ManageConfigDirectoriesUseCase:
 
     def add_directory(self, path: Path) -> bool:
         """Añade un nuevo directorio si no existe previamente."""
-        resolved = path.resolve()
+        resolved = Path(os.path.abspath(path))
         if resolved not in self._directories:
             return self.replace_directories([*self._directories, resolved])
         return False
 
     def remove_directory(self, path: Path) -> bool:
         """Elimina un directorio de la lista de configuración."""
-        resolved = path.resolve()
+        resolved = Path(os.path.abspath(path))
         # Buscar por coincidencia exacta o resuelta
         for d in list(self._directories):
-            if d.resolve() == resolved:
+            if Path(os.path.abspath(d)) == resolved:
                 return self.replace_directories([item for item in self._directories if item != d])
         return False
 
     def replace_directories(self, paths: list[Path]) -> bool:
         """Commit one complete list; publish it in memory only after storage succeeds."""
         try:
-            candidate = list(dict.fromkeys(path.resolve() for path in paths))
+            candidate = list(dict.fromkeys(Path(os.path.abspath(path)) for path in paths))
         except (OSError, ValueError):
             return False
         if not self._config_repo.save_paths(candidate):
@@ -56,7 +57,7 @@ class ManageConfigDirectoriesUseCase:
 
     def discover_directories(self, paths: list[Path]) -> list[Path]:
         """Return discovery merged into a draft without changing saved state."""
-        result = list(dict.fromkeys(path.resolve() for path in paths))
+        result = list(dict.fromkeys(Path(os.path.abspath(path)) for path in paths))
         discovered = self._registry.discover_creative_paths()
         if not discovered:
             return result

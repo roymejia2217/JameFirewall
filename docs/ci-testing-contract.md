@@ -27,13 +27,19 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    the real Tk/ttk widget tree and invokes the primary application control bindings. Native
    storage contracts verify administrator/SYSTEM permissions, reject untrusted existing storage,
    and preserve the previous configuration when Windows denies replacement or a writer is
-   terminated before publishing its flushed temporary file.
+   terminated before publishing its flushed temporary file. Native scanner contracts use
+   real junctions, cycles and denied directory-list permissions, enforce finite traversal
+   budgets and cancellation, and require incomplete scope to remain visible. The Settings
+   contract verifies that discovery leaves the Tk event loop responsive and that Cancel
+   suppresses a worker's late result.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
    Add control, verifies Cancel discards edits, injects a replacement failure through the real
    Save control, and requires the modal, disk and saved memory to retain their previous state.
    Retrying Save must commit the full draft and reload it from disk before activation.
-4. It invokes the real Activate control and requires every executable discovered from the 7-Zip
+4. Before successful activation, a missing configured root must produce partial status
+   and an incomplete-scan diagnostic without creating product firewall rules. After correcting
+   the scope, it invokes the real Activate control and requires every executable discovered from the 7-Zip
    directory to have enabled Windows Defender Firewall **Inbound** and **Outbound** rules with
    action **Block**.
 5. It then invokes the real Deactivate control and requires those rules to disappear.

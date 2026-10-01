@@ -96,6 +96,23 @@ Partial coverage, policy restrictions, and query errors are displayed separately
 This is a policy inspection; it does not perform a live network traffic test or
 certify coverage of files the directory scanner cannot discover.
 
+Scanning streams local directory entries and reports missing or inaccessible roots,
+nonregular executable files, links, junctions and other reparse points as incomplete
+scope. Network roots (UNC or mapped remote drives) are not accepted. Directory paths
+retain their lexical identity when saved so links remain visible to validation.
+An incomplete scan always produces a partial status and activation creates no rules;
+correct the reported roots or omissions before retrying. Existing rules are preserved.
+An explicitly empty directory list remains a complete empty scope.
+
+Each scan allows at most 256 roots, 10,000 folders, 200,000 entries, 10,000 executables,
+100 reported issues and 60 seconds. Queued directory paths and retained executable
+paths/keys share a budget of 2,000,000 characters; issue paths are truncated to 512
+characters. These are traversal and retained-data limits, not a byte-exact process
+memory guarantee. Cancellation and deadlines are checked between filesystem calls;
+a blocked OS call can exceed the deadline. Reparse checks do not provide an atomic
+security boundary against another process replacing directories during enumeration.
+Use stable, trusted local software folders for the elevated application.
+
 Rules from older versions (`<program> jame-block` or `<program> adobe-block`) are
 reported as pending review and retained when deactivating. Their display names do
 not establish ownership. Review their program paths and remove them explicitly in
@@ -109,6 +126,12 @@ configuration or opening another control window. Administrator elevation happens
 before exclusive ownership is acquired; declining elevation ends startup.
 Ownership is retained until operation workers finish closing. After an unexpected
 termination, reopening performs the usual audit of the actual firewall policy.
+
+Autodetection runs on the shared operation worker while Settings remains responsive.
+Its directory edits stay in the draft until Save. Cancel discards the draft and ignores
+late results; an admitted discovery still holds the operation slot until it finishes.
+Discovery checks shutdown cancellation, allows at most 4,096 registry subkeys and 256
+found paths, and has a cooperative 30-second deadline. Errors retain the draft.
 
 Operations run one at a time; activation, deactivation, refresh, and configuration
 remain unavailable until the current operation and its visual updates complete.
