@@ -211,11 +211,13 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
         for program in programs
         for direction in RuleDirection
     ]
-    payload = json.dumps(rules, ensure_ascii=True)
+    payload_path = tmp_path / "inventory-load-rules.json"
+    payload_path.write_text(json.dumps(rules, ensure_ascii=True), encoding="utf-8")
+    payload_literal = str(payload_path).replace("'", "''")
     setup = (
-        "$items = @'\n"
-        + payload
-        + "\n'@ | ConvertFrom-Json; foreach ($item in $items) { "
+        "$items = Get-Content -LiteralPath '"
+        + payload_literal
+        + "' -Raw | ConvertFrom-Json; foreach ($item in $items) { "
         + "New-NetFirewallRule -PolicyStore PersistentStore -Name $item.Name "
         + "-DisplayName $item.Name -Group 'JameFirewall.v1' -Program $item.Program "
         + "-Direction $item.Direction -Action Block -Enabled True -Profile Any "
