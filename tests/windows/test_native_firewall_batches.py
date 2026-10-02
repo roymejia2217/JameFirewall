@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from jame_firewall.core.entities import FirewallRule, ProcessResult, RuleDirection, SystemStatus
-from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
+from jame_firewall.core.rule_identity import MANAGED_GROUP, is_managed_rule, managed_rule_name
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
 from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
 from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
@@ -68,7 +68,10 @@ def test_multi_batch_native_round_trip_and_command_baseline(
         serial_seconds = time.monotonic() - start
         serial_commands = runner.commands
         assert serial_commands == 40
-        assert not firewall.list_inventory([suffix]).rules
+        assert not any(
+            rule.name.startswith(suffix + ":v1:")
+            for rule in firewall.list_inventory([suffix]).rules
+        )
 
         before = runner.commands
         start = time.monotonic()
@@ -102,10 +105,10 @@ def test_native_reconciliation_scales_past_small_rule_sets(
     tmp_path: Path,
     record_testsuite_property: Callable[[str, object], None],
 ) -> None:
-    """Exercise the production scan, inventory, mutation and verification over 128 rules."""
+    """Exercise the production lifecycle above the rule count seen on a real Adobe workstation."""
     assert WindowsUACAdapter().is_admin()
     suffix = "jame-scale-" + uuid.uuid4().hex[:12]
-    programs = [tmp_path / f"scale-{index:03d}.exe" for index in range(64)]
+    programs = [tmp_path / f"scale-{index:03d}.exe" for index in range(132)]
     for program in programs:
         shutil.copy2(sys.executable, program)
     firewall = WindowsNetshAdapter(SystemProcessRunner())
@@ -118,7 +121,11 @@ def test_native_reconciliation_scales_past_small_rule_sets(
         activation_seconds = time.monotonic() - started
         assert summary.blocked_count == len(programs)
         assert summary.failed_count == 0
-        active = firewall.list_inventory([suffix]).rules
+        active = [
+            rule
+            for rule in firewall.list_inventory([suffix]).rules
+            if is_managed_rule(rule, suffix)
+        ]
         assert len(active) == len(programs) * len(RuleDirection)
         assert {rule.program_path for rule in active} == set(programs)
 
@@ -127,7 +134,9 @@ def test_native_reconciliation_scales_past_small_rule_sets(
         deactivation_seconds = time.monotonic() - started
         assert removed.removed_count == len(active)
         assert removed.failed_count == 0
-        assert firewall.list_inventory([suffix]).rules == ()
+        assert not any(
+            is_managed_rule(rule, suffix) for rule in firewall.list_inventory([suffix]).rules
+        )
         record_testsuite_property("firewall_scale_program_count", len(programs))
         record_testsuite_property("firewall_scale_rule_count", len(active))
         record_testsuite_property("firewall_scale_activation_seconds", round(activation_seconds, 3))
@@ -180,7 +189,8 @@ def test_native_batch_failure_preserves_foreign_rule_and_continues(tmp_path: Pat
         )
         assert raw == {"Name": collision, "Group": "Foreign fixture", "Action": "Allow"}
         inventory = firewall.list_inventory([suffix])
-        assert {r.name for r in inventory.rules} == {collision}
+        relevant = {r.name for r in inventory.rules if r.name.startswith(suffix + ":v1:")}
+        assert relevant == {collision}
     finally:
         # Only this test's known foreign fixture is removed explicitly; product must retain it.
         native(

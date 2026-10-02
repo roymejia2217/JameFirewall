@@ -28,7 +28,7 @@ def rules_for(count: int, component: str = "helper") -> list[FirewallRule]:
 def responding_runner() -> MagicMock:
     runner = MagicMock()
 
-    def respond(args: list[str]) -> ProcessResult:
+    def respond(args: list[str], timeout: float | None = None) -> ProcessResult:
         # The payload is data inside a quoted JSON literal, not executable source.
         literal = args[-1].split("$requests = ConvertFrom-Json '", 1)[1].split("';", 1)[0]
         payload = json.loads(literal.replace("''", "'"))
@@ -126,8 +126,8 @@ def test_expired_operation_stops_before_next_batch() -> None:
     runner = responding_runner()
     response = runner.run.side_effect
 
-    def expire(args: list[str]) -> ProcessResult:
-        result: ProcessResult = response(args)
+    def expire(args: list[str], timeout: float | None = None) -> ProcessResult:
+        result: ProcessResult = response(args, timeout=timeout)
         now[0] = 10
         return result
 
@@ -135,6 +135,24 @@ def test_expired_operation_stops_before_next_batch() -> None:
     with operation_budget(10, clock=lambda: now[0]), pytest.raises(OperationDeadlineExceeded):
         WindowsNetshAdapter(runner).add_rules(rules_for(9))
     assert runner.run.call_count == 1
+
+
+def test_confirmed_batches_renew_operation_window_for_long_total_work() -> None:
+    now = [0.0]
+    runner = responding_runner()
+    response = runner.run.side_effect
+
+    def progress(args: list[str], timeout: float | None = None) -> ProcessResult:
+        result: ProcessResult = response(args, timeout=timeout)
+        now[0] += 9
+        return result
+
+    runner.run.side_effect = progress
+    rules = rules_for(3, "z" * 1800)
+    with operation_budget(10, clock=lambda: now[0]):
+        assert WindowsNetshAdapter(runner).add_rules(rules) == (True,) * len(rules)
+    assert runner.run.call_count >= 2
+    assert now[0] > 10
 
 
 @pytest.mark.parametrize(
@@ -150,8 +168,8 @@ def test_incomplete_batch_never_continues_even_with_plausible_json(status: Proce
     runner = responding_runner()
     response = runner.run.side_effect
 
-    def incomplete(args: list[str]) -> ProcessResult:
-        valid: ProcessResult = response(args)
+    def incomplete(args: list[str], timeout: float | None = None) -> ProcessResult:
+        valid: ProcessResult = response(args, timeout=timeout)
         return ProcessResult(status, 0, valid.stdout)
 
     runner.run.side_effect = incomplete

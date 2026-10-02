@@ -36,9 +36,11 @@ def _system_directory() -> Path:
 
 
 def _bounded_timeout(timeout: float | None) -> float:
-    if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
+    if timeout is None:
+        return COMMAND_TIMEOUT_SECONDS
+    if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("Invalid command timeout")
-    return COMMAND_TIMEOUT_SECONDS if timeout is None else min(timeout, COMMAND_TIMEOUT_SECONDS)
+    return timeout
 
 
 def _prepare_command(args: list[str]) -> tuple[list[str], dict[str, str] | None]:

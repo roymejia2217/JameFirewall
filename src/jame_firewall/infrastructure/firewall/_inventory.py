@@ -8,37 +8,47 @@ function Test-Any($value) {
     $values = @($value)
     return ($values.Count -eq 1 -and [string]$values[0] -eq 'Any')
 }
-function Test-Unrestricted($rule, $application) {
-    $port = @(Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule)
-    $address = @(Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $rule)
-    $service = @(Get-NetFirewallServiceFilter -AssociatedNetFirewallRule $rule)
-    $interface = @(Get-NetFirewallInterfaceFilter -AssociatedNetFirewallRule $rule)
-    $type = @(Get-NetFirewallInterfaceTypeFilter -AssociatedNetFirewallRule $rule)
-    $security = @(Get-NetFirewallSecurityFilter -AssociatedNetFirewallRule $rule)
-    if ($port.Count -ne 1 -or $address.Count -ne 1 -or $service.Count -ne 1 -or
-        $interface.Count -ne 1 -or $type.Count -ne 1 -or $security.Count -ne 1) {
-        throw 'Incomplete traffic filter'
-    }
+function Test-Unrestricted(
+    $rule, $application, $port, $address, $service, $interface, $type, $security
+) {
     return (
-        [string]$port[0].Protocol -in @('Any', '256') -and
-        (Test-Any $port[0].LocalPort) -and (Test-Any $port[0].RemotePort) -and
-        (Test-Any $port[0].IcmpType) -and (Test-Any $port[0].DynamicTarget) -and
-        (Test-Any $address[0].LocalAddress) -and (Test-Any $address[0].RemoteAddress) -and
-        (Test-Any $service[0].Service) -and (Test-Any $interface[0].InterfaceAlias) -and
-        (Test-Any $type[0].InterfaceType) -and
-        [string]$security[0].Authentication -eq 'NotRequired' -and
-        [string]$security[0].Encryption -eq 'NotRequired' -and
-        [string]$security[0].LocalUser -in @('', 'Any') -and
-        [string]$security[0].RemoteUser -in @('', 'Any') -and
-        [string]$security[0].RemoteMachine -in @('', 'Any') -and
+        [string]$port.Protocol -in @('Any', '256') -and
+        (Test-Any $port.LocalPort) -and (Test-Any $port.RemotePort) -and
+        (Test-Any $port.IcmpType) -and (Test-Any $port.DynamicTarget) -and
+        (Test-Any $address.LocalAddress) -and (Test-Any $address.RemoteAddress) -and
+        (Test-Any $service.Service) -and (Test-Any $interface.InterfaceAlias) -and
+        (Test-Any $type.InterfaceType) -and
+        [string]$security.Authentication -eq 'NotRequired' -and
+        [string]$security.Encryption -eq 'NotRequired' -and
+        [string]$security.LocalUser -in @('', 'Any') -and
+        [string]$security.RemoteUser -in @('', 'Any') -and
+        [string]$security.RemoteMachine -in @('', 'Any') -and
         [string]$application.Package -in @('', 'Any') -and
         @($rule.Platform | Where-Object { $_ }).Count -eq 0 -and
         @($rule.RemoteDynamicKeywordAddresses | Where-Object { $_ }).Count -eq 0 -and
         [string]$rule.PolicyAppId -eq ''
     )
 }
-# Only provider-filtered rows cross into this command. Overlaps are identity-checked,
-# and provider errors or inconsistent snapshots fail the whole inventory.
+function Read-FilterIndex($store, $commandName, $expected, $label) {
+    $indexed = @{}
+    if ($expected.Count -eq 0) { return $indexed }
+    & $commandName -PolicyStore $store -All -ErrorAction Stop | ForEach-Object {
+        $item = $_
+        $identity = [string]$item.InstanceID
+        if ($expected.ContainsKey($identity)) {
+            if (-not $identity -or $indexed.ContainsKey($identity)) {
+                throw ('Ambiguous ' + $label + ' identity')
+            }
+            $indexed[$identity] = $item
+        }
+    }
+    if ($indexed.Count -ne $expected.Count) {
+        throw ('Incomplete ' + $label + ' inventory')
+    }
+    return $indexed
+}
+# Rule selectors remain provider-scoped. Overlaps are identity-checked, and provider
+# errors or inconsistent snapshots fail the whole inventory.
 function Read-Candidates($store, $parameter, $pattern, $target) {
     $selector = @{}; $selector[$parameter] = $pattern
     $seen = @{}
@@ -70,38 +80,68 @@ function Read-Candidates($store, $parameter, $pattern, $target) {
     }
 }
 $local = @{}
-Read-Candidates 'PersistentStore' 'Group' $group $local
+$active = @{}
 foreach ($suffix in $suffixes) {
     Read-Candidates 'PersistentStore' 'Name' ($suffix + ':v1:*') $local
     Read-Candidates 'PersistentStore' 'DisplayName' ('* ' + $suffix) $local
+    Read-Candidates 'ActiveStore' 'Name' ($suffix + ':v1:*') $active
 }
-$active = @{}
-Read-Candidates 'ActiveStore' 'Group' $group $active
 $profiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore)
 if ($profiles.Count -ne 3) { throw 'Incomplete firewall profile inventory' }
 $enabled = @($profiles | Where-Object { [string]$_.Enabled -ne 'True' }).Count -eq 0
 $allowed = @($profiles | Where-Object {
     [string]$_.AllowLocalFirewallRules -eq 'False'
 }).Count -eq 0
-$items = @(foreach ($r in $local.Values) {
-    $candidate = $r.Group -eq $group
-    foreach ($suffix in $suffixes) {
-        if ($r.Name.StartsWith($suffix + ':v1:', [StringComparison]::Ordinal) -or
-            $r.DisplayName.EndsWith(' ' + $suffix, [StringComparison]::OrdinalIgnoreCase)) {
-            $candidate = $true
-        }
-    }
-    if (-not $candidate) { continue }
-    $filter = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $r)
-    if ($filter.Count -ne 1) { throw 'Incomplete application filter' }
-    $program = [Environment]::ExpandEnvironmentVariables([string]$filter[0].Program)
-    $effective = $false
+$localRules = @($local.Values)
+$localApplicationById = Read-FilterIndex 'PersistentStore' `
+    'Get-NetFirewallApplicationFilter' $local 'application filter'
+
+# NetSecurity filter objects expose the associated rule identity as InstanceID. Read each policy
+# store catalog once and join only the expected rules by identity. This avoids the provider's
+# per-associated-rule lookup path without trusting pipeline output order.
+$activeCandidates = @($active.Values | Where-Object {
+    $local.ContainsKey($_.Name) -and $_.Group -eq $group -and
+    [string]$_.Enabled -eq 'True' -and [string]$_.Action -eq 'Block' -and
+    [string]$_.Profile -eq 'Any' -and [string]$_.PrimaryStatus -eq 'OK'
+})
+$activeExpected = @{}
+foreach ($a in $activeCandidates) { $activeExpected[$a.Name] = $a }
+$activeApplicationById = Read-FilterIndex 'ActiveStore' `
+    'Get-NetFirewallApplicationFilter' $activeExpected 'active application filter'
+$ports = Read-FilterIndex 'ActiveStore' 'Get-NetFirewallPortFilter' `
+    $activeExpected 'port filter'
+$addresses = Read-FilterIndex 'ActiveStore' 'Get-NetFirewallAddressFilter' `
+    $activeExpected 'address filter'
+$services = Read-FilterIndex 'ActiveStore' 'Get-NetFirewallServiceFilter' `
+    $activeExpected 'service filter'
+$interfaces = Read-FilterIndex 'ActiveStore' 'Get-NetFirewallInterfaceFilter' `
+    $activeExpected 'interface filter'
+$interfaceTypes = Read-FilterIndex 'ActiveStore' 'Get-NetFirewallInterfaceTypeFilter' `
+    $activeExpected 'interface type filter'
+$securityFilters = Read-FilterIndex 'ActiveStore' 'Get-NetFirewallSecurityFilter' `
+    $activeExpected 'security filter'
+
+$effectiveByName = @{}
+foreach ($a in $activeCandidates) {
+    $af = $activeApplicationById[$a.Name]
+    $localFilter = $localApplicationById[$a.Name]
+    $ap = [Environment]::ExpandEnvironmentVariables([string]$af.Program)
+    $program = [Environment]::ExpandEnvironmentVariables([string]$localFilter.Program)
+    $effectiveByName[$a.Name] = [bool](
+        $a.Direction -eq $local[$a.Name].Direction -and
+        [string]::Equals($ap.Replace('/', '\'), $program.Replace('/', '\'),
+            [StringComparison]::OrdinalIgnoreCase) -and
+        (Test-Unrestricted $a $af $ports[$a.Name] $addresses[$a.Name] $services[$a.Name] `
+            $interfaces[$a.Name] $interfaceTypes[$a.Name] $securityFilters[$a.Name])
+    )
+}
+
+$items = @(foreach ($r in $localRules) {
+    $filter = $localApplicationById[$r.Name]
+    $program = [Environment]::ExpandEnvironmentVariables([string]$filter.Program)
     $states = @()
     $a = $active[$r.Name]
     if ($null -ne $a) {
-        $af = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $a)
-        if ($af.Count -ne 1) { throw 'Incomplete active application filter' }
-        $ap = [Environment]::ExpandEnvironmentVariables([string]$af[0].Program)
         # NetSecurity exposes an array through the Value property on Windows PowerShell.
         $enforcement = $a.EnforcementStatus
         if ($null -ne $enforcement -and
@@ -109,24 +149,14 @@ $items = @(foreach ($r in $local.Values) {
             $enforcement = $enforcement.Value
         }
         $states = @($enforcement | ForEach-Object { [string]$_ })
-        $effective = (
-            $a.Group -eq $group -and
-            [string]$a.Enabled -eq 'True' -and
-            [string]$a.Action -eq 'Block' -and
-            [string]$a.Profile -eq 'Any' -and
-            [string]$a.PrimaryStatus -eq 'OK' -and
-            (Test-Unrestricted $a $af[0]) -and
-            $a.Direction -eq $r.Direction -and
-            [string]::Equals($ap.Replace('/', '\'), $program.Replace('/', '\'),
-                [StringComparison]::OrdinalIgnoreCase)
-        )
     }
     [PSCustomObject]@{
         Name = [string]$r.Name; DisplayName = [string]$r.DisplayName
         Program = $program; Direction = [string]$r.Direction
         Action = [string]$r.Action; Group = [string]$r.Group
         Enabled = ([string]$r.Enabled -eq 'True')
-        Profile = [string]$r.Profile; Effective = [bool]$effective
+        Profile = [string]$r.Profile
+        Effective = ($effectiveByName.ContainsKey($r.Name) -and [bool]$effectiveByName[$r.Name])
         EnforcementStates = @($states)
     }
 })

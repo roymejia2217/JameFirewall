@@ -12,7 +12,12 @@ from jame_firewall.core.entities import (
     RuleDirection,
 )
 from jame_firewall.core.exceptions import FirewallExecutionError
-from jame_firewall.core.execution import check_operation_budget
+from jame_firewall.core.execution import (
+    OPERATION_TIMEOUT_SECONDS,
+    check_operation_budget,
+    remaining_operation_seconds,
+    renew_operation_budget,
+)
 from jame_firewall.core.ports import ProcessRunnerPort
 from jame_firewall.core.rule_identity import MANAGED_GROUP, is_managed_rule
 from jame_firewall.infrastructure.firewall._inventory import (
@@ -72,7 +77,7 @@ class WindowsNetshAdapter:
     def __init__(self, runner: ProcessRunnerPort) -> None:
         self._runner = runner
 
-    def _run(self, script: str) -> tuple[int, str, str]:
+    def _run(self, script: str, *, timeout: float | None = None) -> tuple[int, str, str]:
         command = (
             "$ErrorActionPreference = 'Stop'; "
             "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "
@@ -80,9 +85,12 @@ class WindowsNetshAdapter:
             + script
             + "\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
         )
-        result = self._runner.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", command]
-        )
+        args = ["powershell", "-NoProfile", "-NonInteractive", "-Command", command]
+        effective_timeout = timeout
+        if effective_timeout is None:
+            remaining = remaining_operation_seconds()
+            effective_timeout = remaining if remaining is not None else OPERATION_TIMEOUT_SECONDS
+        result = self._runner.run(args, timeout=effective_timeout)
         if result.status != ProcessStatus.COMPLETED or result.returncode is None:
             detail = result.detail or result.stderr[:1024] or result.status.value
             raise FirewallExecutionError(
@@ -116,6 +124,8 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         -InterfaceType Any -Service Any | Out-Null
 """
         code, _, _ = self._run(script)
+        if code == 0:
+            renew_operation_budget()
         return code == 0
 
     def delete_rule(self, rule: FirewallRule) -> bool:
@@ -130,6 +140,8 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
             + "if ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r }"
         )
         code, _, _ = self._run(script)
+        if code == 0:
+            renew_operation_budget()
         return code == 0
 
     def add_rules(self, rules: list[FirewallRule]) -> tuple[bool, ...]:
@@ -219,6 +231,7 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
                 if not isinstance(item, dict) or item.get("Name") != rule.name:
                     raise ValueError("Mismatched batch identity")
                 results.append(self._boolean(item, "Succeeded"))
+            renew_operation_budget()
             return results
         except (ValueError, KeyError, TypeError) as ex:
             raise FirewallExecutionError("Respuesta de lote inválida; actualice el estado") from ex
@@ -248,6 +261,7 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
             if len({r.name.casefold() for r in rules}) != len(rules):
                 raise ValueError("Duplicate native identities")
             check_operation_budget()
+            renew_operation_budget()
             return FirewallInventory(rules, enabled, allowed)
         except (ValueError, KeyError, TypeError) as ex:
             raise FirewallExecutionError("Respuesta de firewall inválida") from ex

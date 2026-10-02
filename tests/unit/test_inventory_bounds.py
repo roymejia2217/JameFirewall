@@ -40,17 +40,27 @@ def test_inventory_queries_stay_scoped_and_fail_closed_before_expensive_filter_r
     adapter, runner = adapter_with_response(inventory_json())
     adapter.list_inventory(["jame-block", "adobe-block"])
     script: str = runner.run.call_args.args[0][-1]
-    assert "Read-Candidates 'PersistentStore' 'Group' $group" in script
+    assert "Read-Candidates 'PersistentStore' 'Group' $group" not in script
     assert "Read-Candidates 'PersistentStore' 'Name'" in script
     assert "Read-Candidates 'PersistentStore' 'DisplayName'" in script
-    assert "Read-Candidates 'ActiveStore' 'Group' $group" in script
+    assert "Read-Candidates 'ActiveStore' 'Name'" in script
+    assert "Read-Candidates 'ActiveStore' 'Group' $group" not in script
     assert "$maxCandidates" not in script
     assert "$maxRows" not in script
     assert "candidate limit exceeded" not in script
     assert "row limit exceeded" not in script
     assert "Get-NetFirewallRule -PolicyStore PersistentStore)" not in script
     assert "Get-NetFirewallRule -PolicyStore ActiveStore)" not in script
-    assert script.index("Read-Candidates 'ActiveStore'") < script.index("$filter = @(")
+    assert script.index("Read-Candidates 'ActiveStore'") < script.index("$localApplicationById =")
+    assert "Read-FilterIndex" in script
+    assert "& $commandName -PolicyStore $store -All -ErrorAction Stop" in script
+    assert "Read-FilterIndex 'PersistentStore'" in script
+    assert "'Get-NetFirewallApplicationFilter' $local 'application filter'" in script
+    assert "Read-FilterIndex 'ActiveStore' 'Get-NetFirewallPortFilter'" in script
+    assert "$localRules | Get-NetFirewallApplicationFilter" not in script
+    assert "$activeCandidates | Get-NetFirewallApplicationFilter" not in script
+    assert "Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule" not in script
+    assert "$item.InstanceID" in script
     # Missing selectors are the sole empty-query exception; provider failures never fall back.
     assert "CmdletizationQuery_NotFound_" in script
     assert "ObjectNotFound" in script
