@@ -156,6 +156,9 @@ def test_inventory_reads_active_policy_and_program_filters() -> None:
     assert "PersistentStore" in script
     assert "Get-NetFirewallApplicationFilter" in script
     assert "EnforcementStatus" in script
+    assert "$localRules | Get-NetFirewallApplicationFilter" in script
+    assert "$activeCandidates | Get-NetFirewallApplicationFilter" in script
+    assert "Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule" not in script
     for provider_filter in (
         "Get-NetFirewallPortFilter",
         "Get-NetFirewallAddressFilter",

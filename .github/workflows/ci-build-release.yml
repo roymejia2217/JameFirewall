@@ -59,7 +59,7 @@ jobs:
     name: Windows Release Preflight
     needs: quality-gate
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 60
     outputs:
       candidate_sha256: ${{ steps.candidate-hash.outputs.sha256 }}
 
@@ -87,7 +87,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          uv run pytest -m "windows_only and not windows_system" --junitxml=artifacts/pytest-windows.xml -v
+          uv run pytest -m "windows_only and not windows_system" --junitxml=artifacts/pytest-windows.xml --benchmark-json=artifacts/pytest-windows-benchmarks.json -v
 
       - name: Install pinned 7-Zip system fixture
         shell: pwsh
@@ -150,6 +150,7 @@ jobs:
             dist/JameFirewall.exe
             dist/JameFirewall.exe.sha256
             artifacts/pytest-windows.xml
+            artifacts/pytest-windows-benchmarks.json
             artifacts/pytest-windows-system.xml
             artifacts/pester-windows.xml
           if-no-files-found: error
