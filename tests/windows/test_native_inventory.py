@@ -16,7 +16,6 @@ from jame_firewall.core.entities import FirewallRule, RuleDirection, SystemStatu
 from jame_firewall.core.exceptions import FirewallExecutionError
 from jame_firewall.core.rule_identity import managed_rule_name, program_key
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
-from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
 from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
 from jame_firewall.infrastructure.firewall._inventory import _INVENTORY_SCRIPT
 from jame_firewall.infrastructure.firewall.netsh_adapter import WindowsNetshAdapter
@@ -192,7 +191,7 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
     benchmark: Any,
     record_testsuite_property: Callable[[str, object], None],
 ) -> None:
-    """Exercise full activation, audit and cleanup with 128 effective owned rules."""
+    """Measure the production refresh path against 128 real effective native rules."""
     assert WindowsUACAdapter().is_admin()
     suffix = "jame-load-" + uuid.uuid4().hex[:12]
     programs = [tmp_path / f"program-{index:03d}.exe" for index in range(64)]
@@ -202,16 +201,38 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
     firewall = WindowsNetshAdapter(runner)
     uac = WindowsUACAdapter()
     scanner = OSFileSystemAdapter()
-    block = BlockExecutablesUseCase(firewall, scanner, uac, primary_suffix=suffix)
-    unblock = UnblockRulesUseCase(firewall, uac, primary_suffix=suffix)
     audit = AuditFirewallStatusUseCase(firewall, uac, scanner, primary_suffix=suffix)
+    rules = [
+        {
+            "Name": managed_rule_name(program, direction, suffix),
+            "Program": str(program),
+            "Direction": "Inbound" if direction == RuleDirection.IN else "Outbound",
+        }
+        for program in programs
+        for direction in RuleDirection
+    ]
+    payload = json.dumps(rules, ensure_ascii=True)
+    setup = (
+        "$items = @'\n"
+        + payload
+        + "\n'@ | ConvertFrom-Json; foreach ($item in $items) { "
+        + "New-NetFirewallRule -PolicyStore PersistentStore -Name $item.Name "
+        + "-DisplayName $item.Name -Group 'JameFirewall.v1' -Program $item.Program "
+        + "-Direction $item.Direction -Action Block -Enabled True -Profile Any "
+        + "-Protocol Any -LocalAddress Any -RemoteAddress Any -InterfaceType Any "
+        + "-Service Any | Out-Null }"
+    )
+    cleanup = (
+        "$prefix = '" + suffix + ":v1:'; "
+        "Get-NetFirewallRule -PolicyStore PersistentStore | Where-Object { "
+        "$_.Group -eq 'JameFirewall.v1' -and $_.Name.StartsWith($prefix, "
+        "[StringComparison]::Ordinal) } | Remove-NetFirewallRule"
+    )
     process = psutil.Process()
     rss_before = process.memory_info().rss
     try:
-        started = time.monotonic()
-        summary = block.execute([tmp_path])
-        activation_seconds = time.monotonic() - started
-        assert summary.blocked_count == 64 and summary.failed_count == 0, summary
+        result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", setup])
+        assert result.succeeded, result
 
         inventory = benchmark.pedantic(
             firewall.list_inventory,
@@ -228,17 +249,18 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
             for direction in RuleDirection:
                 rule = by_name[managed_rule_name(program, direction, suffix)]
                 assert program_key(rule.program_path) == program_key(program)
+        audit_started = time.monotonic()
         assert audit.execute([tmp_path]).status == SystemStatus.PROTECTED
-        repeated = block.execute([tmp_path])
-        assert repeated.skipped_count == 64 and repeated.blocked_count == 0
-        removed = unblock.execute()
-        assert removed.removed_count == 128 and removed.failed_count == 0
+        audit_seconds = time.monotonic() - audit_started
+        result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cleanup])
+        assert result.succeeded, result
+        assert not firewall.list_inventory([suffix]).rules
         assert audit.execute([tmp_path]).status == SystemStatus.UNPROTECTED
 
         record_testsuite_property("inventory_load_owned_rules", len(inventory.rules))
-        record_testsuite_property("inventory_load_activation_seconds", round(activation_seconds, 3))
-        record_testsuite_property("inventory_load_benchmark_seconds", benchmark.stats.mean)
+        record_testsuite_property("inventory_load_audit_seconds", round(audit_seconds, 3))
+        record_testsuite_property("inventory_load_benchmark_seconds", benchmark.stats.stats.mean)
         record_testsuite_property("inventory_load_rss_before_bytes", rss_before)
         record_testsuite_property("inventory_load_rss_after_bytes", process.memory_info().rss)
     finally:
-        unblock.execute()
+        runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cleanup])

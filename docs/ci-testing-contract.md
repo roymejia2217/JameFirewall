@@ -52,9 +52,11 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    is diagnostic; command counts and observed policy are deterministic assertions.
    Scoped inventory contracts add 128 real unrelated rules and verify that owned rules,
    a case-insensitive legacy display suffix and a foreign native-name collision remain
-   distinguishable. An additional native inventory load case verifies 128 owned rules across 64
-   executable paths and records its measured duration and process working set. These cases preserve
-   foreign/legacy rules on deactivation and require an
+   distinguishable. An additional native inventory load case installs 128 real owned rules across
+   64 executable paths, verifies exact rule-to-program identity and effective policy through the
+   production inventory and audit paths, then removes the isolated fixture. It records refresh
+   duration and process working set. These cases preserve foreign/legacy rules on deactivation and
+   require an
    authoritative empty inventory after fixture cleanup. Native PowerShell fault fixtures
    reject candidate/row quotas, duplicate or changing identities, denied access and false
    absence errors before expensive filter reads. JUnit properties record full catalog row

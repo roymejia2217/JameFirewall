@@ -9,19 +9,29 @@ function Test-Any($value) {
     $values = @($value)
     return ($values.Count -eq 1 -and [string]$values[0] -eq 'Any')
 }
-function Test-Unrestricted($rule, $application, $port, $address, $service, $interface, $type, $security) {
+function Test-Unrestricted($rule, $application) {
+    $port = @(Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule)
+    $address = @(Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $rule)
+    $service = @(Get-NetFirewallServiceFilter -AssociatedNetFirewallRule $rule)
+    $interface = @(Get-NetFirewallInterfaceFilter -AssociatedNetFirewallRule $rule)
+    $type = @(Get-NetFirewallInterfaceTypeFilter -AssociatedNetFirewallRule $rule)
+    $security = @(Get-NetFirewallSecurityFilter -AssociatedNetFirewallRule $rule)
+    if ($port.Count -ne 1 -or $address.Count -ne 1 -or $service.Count -ne 1 -or
+        $interface.Count -ne 1 -or $type.Count -ne 1 -or $security.Count -ne 1) {
+        throw 'Incomplete traffic filter'
+    }
     return (
-        [string]$port.Protocol -in @('Any', '256') -and
-        (Test-Any $port.LocalPort) -and (Test-Any $port.RemotePort) -and
-        (Test-Any $port.IcmpType) -and (Test-Any $port.DynamicTarget) -and
-        (Test-Any $address.LocalAddress) -and (Test-Any $address.RemoteAddress) -and
-        (Test-Any $service.Service) -and (Test-Any $interface.InterfaceAlias) -and
-        (Test-Any $type.InterfaceType) -and
-        [string]$security.Authentication -eq 'NotRequired' -and
-        [string]$security.Encryption -eq 'NotRequired' -and
-        [string]$security.LocalUser -in @('', 'Any') -and
-        [string]$security.RemoteUser -in @('', 'Any') -and
-        [string]$security.RemoteMachine -in @('', 'Any') -and
+        [string]$port[0].Protocol -in @('Any', '256') -and
+        (Test-Any $port[0].LocalPort) -and (Test-Any $port[0].RemotePort) -and
+        (Test-Any $port[0].IcmpType) -and (Test-Any $port[0].DynamicTarget) -and
+        (Test-Any $address[0].LocalAddress) -and (Test-Any $address[0].RemoteAddress) -and
+        (Test-Any $service[0].Service) -and (Test-Any $interface[0].InterfaceAlias) -and
+        (Test-Any $type[0].InterfaceType) -and
+        [string]$security[0].Authentication -eq 'NotRequired' -and
+        [string]$security[0].Encryption -eq 'NotRequired' -and
+        [string]$security[0].LocalUser -in @('', 'Any') -and
+        [string]$security[0].RemoteUser -in @('', 'Any') -and
+        [string]$security[0].RemoteMachine -in @('', 'Any') -and
         [string]$application.Package -in @('', 'Any') -and
         @($rule.Platform | Where-Object { $_ }).Count -eq 0 -and
         @($rule.RemoteDynamicKeywordAddresses | Where-Object { $_ }).Count -eq 0 -and
@@ -79,7 +89,7 @@ $enabled = @($profiles | Where-Object { [string]$_.Enabled -ne 'True' }).Count -
 $allowed = @($profiles | Where-Object {
     [string]$_.AllowLocalFirewallRules -eq 'False'
 }).Count -eq 0
-$localRules = @(foreach ($r in $local.Values) {
+$items = @(foreach ($r in $local.Values) {
     $candidate = $r.Group -eq $group
     foreach ($suffix in $suffixes) {
         if ($r.Name.StartsWith($suffix + ':v1:', [StringComparison]::Ordinal) -or
@@ -87,71 +97,17 @@ $localRules = @(foreach ($r in $local.Values) {
             $candidate = $true
         }
     }
-    if ($candidate) { $r }
-})
-# NetSecurity declares a one-to-one association and accepts rule objects through pipeline input.
-# Keep the output in the same sequential order, assert cardinality, then verify program paths
-# against their rule identities before trusting the corresponding traffic filters.
-$localApplications = @($localRules | Get-NetFirewallApplicationFilter -ErrorAction Stop)
-if ($localApplications.Count -ne $localRules.Count) { throw 'Incomplete application filter inventory' }
-$localPrograms = @{}
-for ($index = 0; $index -lt $localRules.Count; $index++) {
-    $localPrograms[$localRules[$index].Name] = [Environment]::ExpandEnvironmentVariables(
-        [string]$localApplications[$index].Program)
-}
-
-# A rule that fails a necessary ActiveStore property cannot be effective. Skip associated
-# filter reads for it; continue to inspect every candidate that could enforce a block.
-$activeCandidates = @(foreach ($r in $localRules) {
-    $a = $active[$r.Name]
-    if ($null -ne $a -and $a.Group -eq $group -and
-        [string]$a.Enabled -eq 'True' -and [string]$a.Action -eq 'Block' -and
-        [string]$a.Profile -eq 'Any' -and [string]$a.PrimaryStatus -eq 'OK' -and
-        $a.Direction -eq $r.Direction) { $a }
-})
-$activeApplications = @($activeCandidates | Get-NetFirewallApplicationFilter -ErrorAction Stop)
-if ($activeApplications.Count -ne $activeCandidates.Count) {
-    throw 'Incomplete active application filter inventory'
-}
-$effectiveCandidates = @(for ($index = 0; $index -lt $activeCandidates.Count; $index++) {
-    $a = $activeCandidates[$index]
-    $program = [Environment]::ExpandEnvironmentVariables([string]$activeApplications[$index].Program)
-    $localProgram = [string]$localPrograms[$a.Name]
-    if ([string]::Equals($program.Replace('/', '\'), $localProgram.Replace('/', '\'),
-        [StringComparison]::OrdinalIgnoreCase)) {
-        [PSCustomObject]@{ Rule = $a; Application = $activeApplications[$index] }
-    }
-})
-$effectiveRules = @($effectiveCandidates | ForEach-Object { $_.Rule })
-$ports = @($effectiveRules | Get-NetFirewallPortFilter -ErrorAction Stop)
-$addresses = @($effectiveRules | Get-NetFirewallAddressFilter -ErrorAction Stop)
-$services = @($effectiveRules | Get-NetFirewallServiceFilter -ErrorAction Stop)
-$interfaces = @($effectiveRules | Get-NetFirewallInterfaceFilter -ErrorAction Stop)
-$interfaceTypes = @($effectiveRules | Get-NetFirewallInterfaceTypeFilter -ErrorAction Stop)
-$securityFilters = @($effectiveRules | Get-NetFirewallSecurityFilter -ErrorAction Stop)
-if ($ports.Count -ne $effectiveCandidates.Count -or
-    $addresses.Count -ne $effectiveCandidates.Count -or
-    $services.Count -ne $effectiveCandidates.Count -or
-    $interfaces.Count -ne $effectiveCandidates.Count -or
-    $interfaceTypes.Count -ne $effectiveCandidates.Count -or
-    $securityFilters.Count -ne $effectiveCandidates.Count) {
-    throw 'Incomplete traffic filter inventory'
-}
-$effectiveByName = @{}
-for ($index = 0; $index -lt $effectiveCandidates.Count; $index++) {
-    $candidate = $effectiveCandidates[$index]
-    $a = $candidate.Rule
-    $effectiveByName[$a.Name] = [bool](Test-Unrestricted $a $candidate.Application `
-        $ports[$index] $addresses[$index] $services[$index] $interfaces[$index] `
-        $interfaceTypes[$index] $securityFilters[$index])
-}
-$items = @(for ($index = 0; $index -lt $localRules.Count; $index++) {
-    $r = $localRules[$index]
-    $program = [string]$localPrograms[$r.Name]
-    $effective = $effectiveByName.ContainsKey($r.Name) -and [bool]$effectiveByName[$r.Name]
+    if (-not $candidate) { continue }
+    $filter = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $r)
+    if ($filter.Count -ne 1) { throw 'Incomplete application filter' }
+    $program = [Environment]::ExpandEnvironmentVariables([string]$filter[0].Program)
+    $effective = $false
     $states = @()
     $a = $active[$r.Name]
     if ($null -ne $a) {
+        $af = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $a)
+        if ($af.Count -ne 1) { throw 'Incomplete active application filter' }
+        $ap = [Environment]::ExpandEnvironmentVariables([string]$af[0].Program)
         # NetSecurity exposes an array through the Value property on Windows PowerShell.
         $enforcement = $a.EnforcementStatus
         if ($null -ne $enforcement -and
@@ -159,6 +115,17 @@ $items = @(for ($index = 0; $index -lt $localRules.Count; $index++) {
             $enforcement = $enforcement.Value
         }
         $states = @($enforcement | ForEach-Object { [string]$_ })
+        $effective = (
+            $a.Group -eq $group -and
+            [string]$a.Enabled -eq 'True' -and
+            [string]$a.Action -eq 'Block' -and
+            [string]$a.Profile -eq 'Any' -and
+            [string]$a.PrimaryStatus -eq 'OK' -and
+            (Test-Unrestricted $a $af[0]) -and
+            $a.Direction -eq $r.Direction -and
+            [string]::Equals($ap.Replace('/', '\'), $program.Replace('/', '\'),
+                [StringComparison]::OrdinalIgnoreCase)
+        )
     }
     [PSCustomObject]@{
         Name = [string]$r.Name; DisplayName = [string]$r.DisplayName
