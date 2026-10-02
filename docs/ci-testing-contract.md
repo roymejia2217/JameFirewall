@@ -6,6 +6,10 @@ accepted by itself as proof that the Windows desktop application works.
 ## Authoritative tooling
 
 - **pytest** executes Python unit, contract, native-Windows, and system-acceptance tests.
+- **pytest-benchmark 5.3.0** records controlled Windows scan and inventory timings as JSON. The
+  benchmark setup is outside the measured scan; timing remains diagnostic until repeated hosted
+  runner data supports a stable regression threshold.
+- **psutil 7.2.2** records the Windows test process working set around measured workloads.
 - **Actionlint 1.7.12** validates GitHub Actions workflow semantics from its official repository,
   pinned to immutable commit `914e7df21a07ef503a81201c76d2b11c789d3fca`.
 - **PyInstaller** produces the same one-file Windows executable delivered to users.
@@ -29,7 +33,12 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    and preserve the previous configuration when Windows denies replacement or a writer is
    terminated before publishing its flushed temporary file. Native scanner contracts use
    real junctions, cycles and denied directory-list permissions, enforce finite traversal
-   budgets and cancellation, and require incomplete scope to remain visible. The Settings
+   budgets and cancellation, and require incomplete scope to remain visible. Scanner load profiles
+   traverse 1,000, 10,000 and 200,000 real NTFS entries, including 100, 1,000 and 5,000 `.exe`
+   paths respectively. These zero-byte files measure the scanner's path-discovery work; the pinned
+   7-Zip fixture continues to cover real executable paths through the firewall flow. Tests assert
+   complete results, exact counts, uniqueness and configured bounds while recording benchmark
+   JSON, fixture setup duration and process working set. The Settings
    contract verifies that discovery leaves the Tk event loop responsive and that Cancel
    suppresses a worker's late result. Native process contracts require timeout, output
    overflow, cancellation and successful-parent completion to stop pipe-owning descendants.
@@ -43,7 +52,9 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    is diagnostic; command counts and observed policy are deterministic assertions.
    Scoped inventory contracts add 128 real unrelated rules and verify that owned rules,
    a case-insensitive legacy display suffix and a foreign native-name collision remain
-   distinguishable. They preserve foreign/legacy rules on deactivation and require an
+   distinguishable. An additional native inventory load case verifies 128 owned rules across 64
+   executable paths and records its measured duration and process working set. These cases preserve
+   foreign/legacy rules on deactivation and require an
    authoritative empty inventory after fixture cleanup. Native PowerShell fault fixtures
    reject candidate/row quotas, duplicate or changing identities, denied access and false
    absence errors before expensive filter reads. JUnit properties record full catalog row

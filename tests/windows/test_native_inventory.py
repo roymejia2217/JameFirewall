@@ -7,12 +7,16 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+import psutil
 import pytest
 
 from jame_firewall.core.entities import FirewallRule, RuleDirection, SystemStatus
 from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.rule_identity import managed_rule_name, program_key
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
+from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
 from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
 from jame_firewall.infrastructure.firewall._inventory import _INVENTORY_SCRIPT
 from jame_firewall.infrastructure.firewall.netsh_adapter import WindowsNetshAdapter
@@ -180,3 +184,61 @@ def test_native_empty_group_uses_cim_property_identity() -> None:
     }
     # Production must accept absence and still retrieve all profiles, not hide other errors.
     assert WindowsNetshAdapter(runner).list_inventory([group]).rules == ()
+
+
+@pytest.mark.windows_load
+def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
+    tmp_path: Path,
+    benchmark: Any,
+    record_testsuite_property: Callable[[str, object], None],
+) -> None:
+    """Exercise full activation, audit and cleanup with 128 effective owned rules."""
+    assert WindowsUACAdapter().is_admin()
+    suffix = "jame-load-" + uuid.uuid4().hex[:12]
+    programs = [tmp_path / f"program-{index:03d}.exe" for index in range(64)]
+    for program in programs:
+        shutil.copy2(sys.executable, program)
+    runner = SystemProcessRunner()
+    firewall = WindowsNetshAdapter(runner)
+    uac = WindowsUACAdapter()
+    scanner = OSFileSystemAdapter()
+    block = BlockExecutablesUseCase(firewall, scanner, uac, primary_suffix=suffix)
+    unblock = UnblockRulesUseCase(firewall, uac, primary_suffix=suffix)
+    audit = AuditFirewallStatusUseCase(firewall, uac, scanner, primary_suffix=suffix)
+    process = psutil.Process()
+    rss_before = process.memory_info().rss
+    try:
+        started = time.monotonic()
+        summary = block.execute([tmp_path])
+        activation_seconds = time.monotonic() - started
+        assert summary.blocked_count == 64 and summary.failed_count == 0, summary
+
+        inventory = benchmark.pedantic(
+            firewall.list_inventory,
+            args=([suffix],),
+            iterations=1,
+            rounds=1,
+            warmup_rounds=0,
+        )
+        by_name = {rule.name: rule for rule in inventory.rules}
+        assert len(by_name) == 128
+        assert all(rule.effective for rule in inventory.rules)
+        # Unique paths prove batched provider output remains associated with its rule.
+        for program in programs:
+            for direction in RuleDirection:
+                rule = by_name[managed_rule_name(program, direction, suffix)]
+                assert program_key(rule.program_path) == program_key(program)
+        assert audit.execute([tmp_path]).status == SystemStatus.PROTECTED
+        repeated = block.execute([tmp_path])
+        assert repeated.skipped_count == 64 and repeated.blocked_count == 0
+        removed = unblock.execute()
+        assert removed.removed_count == 128 and removed.failed_count == 0
+        assert audit.execute([tmp_path]).status == SystemStatus.UNPROTECTED
+
+        record_testsuite_property("inventory_load_owned_rules", len(inventory.rules))
+        record_testsuite_property("inventory_load_activation_seconds", round(activation_seconds, 3))
+        record_testsuite_property("inventory_load_benchmark_seconds", benchmark.stats.mean)
+        record_testsuite_property("inventory_load_rss_before_bytes", rss_before)
+        record_testsuite_property("inventory_load_rss_after_bytes", process.memory_info().rss)
+    finally:
+        unblock.execute()
