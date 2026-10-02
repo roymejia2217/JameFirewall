@@ -5,7 +5,11 @@ from pathlib import Path
 
 from jame_firewall.core.entities import BlockSummary, FirewallRule, RuleDirection
 from jame_firewall.core.exceptions import PrivilegesRequiredError
-from jame_firewall.core.execution import check_operation_budget, operation_budget
+from jame_firewall.core.execution import (
+    check_operation_budget,
+    operation_budget,
+    renew_operation_budget,
+)
 from jame_firewall.core.ports import DirectoryScannerPort, FirewallPort, UACPort
 from jame_firewall.core.rule_identity import (
     MANAGED_GROUP,
@@ -64,6 +68,7 @@ class BlockExecutablesUseCase:
             if progress:
                 progress(message, "err")
             return BlockSummary(0, 0, 0, [message], scan_complete=False)
+        renew_operation_budget()
         check_operation_budget()
         inventory = self._firewall.list_inventory([self._suffix])
         covered = covered_programs(inventory, self._suffix)

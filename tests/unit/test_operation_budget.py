@@ -1,4 +1,4 @@
-"""Operation-wide deadlines must survive nesting and stop additional side effects."""
+"""Operation progress leases must survive nesting and stop stalled side effects."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +20,7 @@ from jame_firewall.core.execution import (
     check_operation_budget,
     operation_budget,
     remaining_operation_seconds,
+    renew_operation_budget,
 )
 from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
@@ -57,6 +58,20 @@ def test_default_deadline_is_120_seconds_and_context_resets() -> None:
         clock.now = 120
         with pytest.raises(OperationDeadlineExceeded):
             check_operation_budget()
+    assert remaining_operation_seconds() is None
+
+
+def test_confirmed_progress_renews_the_same_window_without_reviving_expired_work() -> None:
+    clock = FakeClock()
+    with operation_budget(10, clock=clock):
+        clock.now = 9
+        renew_operation_budget()
+        assert remaining_operation_seconds() == pytest.approx(10)
+        clock.now = 18
+        assert remaining_operation_seconds() == pytest.approx(1)
+        clock.now = 19
+        with pytest.raises(OperationDeadlineExceeded):
+            renew_operation_budget()
     assert remaining_operation_seconds() is None
 
 

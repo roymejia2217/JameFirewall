@@ -86,13 +86,14 @@ def test_windows_missing_system_powershell_never_falls_back(
     launch.assert_not_called()
 
 
-@pytest.mark.parametrize("timeout", [None, 500.0, 30.0])
-def test_process_deadline_cannot_be_disabled(timeout: float | None) -> None:
-    assert module._bounded_timeout(timeout) == 30.0
-
-
-def test_shorter_deadline_is_preserved() -> None:
-    assert module._bounded_timeout(0.125) == 0.125
+@pytest.mark.parametrize(
+    ("timeout", "expected"),
+    [(None, 30.0), (500.0, 500.0), (30.0, 30.0), (0.125, 0.125)],
+)
+def test_process_deadline_preserves_explicit_finite_bounds(
+    timeout: float | None, expected: float
+) -> None:
+    assert module._bounded_timeout(timeout) == expected
 
 
 @pytest.mark.parametrize("timeout", [0.0, -1.0, float("nan"), float("inf")])

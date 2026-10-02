@@ -14,7 +14,7 @@ import pytest
 
 from jame_firewall.core.entities import FirewallRule, RuleDirection, SystemStatus
 from jame_firewall.core.exceptions import FirewallExecutionError
-from jame_firewall.core.rule_identity import managed_rule_name, program_key
+from jame_firewall.core.rule_identity import is_managed_rule, managed_rule_name, program_key
 from jame_firewall.core.use_cases.audit_status import AuditFirewallStatusUseCase
 from jame_firewall.core.use_cases.unblock_rules import UnblockRulesUseCase
 from jame_firewall.infrastructure.firewall._inventory import _INVENTORY_SCRIPT
@@ -186,15 +186,16 @@ def test_native_empty_selector_uses_cim_property_identity(
 
 
 @pytest.mark.windows_load
-def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
+def test_inventory_load_with_realistic_large_rule_set_is_complete_and_effective(
     tmp_path: Path,
     benchmark: Any,
     record_testsuite_property: Callable[[str, object], None],
 ) -> None:
-    """Measure the production refresh path against 128 real effective native rules."""
+    """Measure production refresh above the rule count observed on a real Adobe workstation."""
     assert WindowsUACAdapter().is_admin()
     suffix = "jame-load-" + uuid.uuid4().hex[:12]
-    programs = [tmp_path / f"program-{index:03d}.exe" for index in range(64)]
+    program_count = 132
+    programs = [tmp_path / f"program-{index:03d}.exe" for index in range(program_count)]
     for program in programs:
         shutil.copy2(sys.executable, program)
     runner = SystemProcessRunner()
@@ -211,30 +212,34 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
         for program in programs
         for direction in RuleDirection
     ]
-    payload_path = tmp_path / "inventory-load-rules.json"
-    payload_path.write_text(json.dumps(rules, ensure_ascii=True), encoding="utf-8")
-    payload_literal = str(payload_path).replace("'", "''")
-    setup = (
-        "$items = Get-Content -LiteralPath '"
-        + payload_literal
-        + "' -Raw | ConvertFrom-Json; foreach ($item in $items) { "
-        + "New-NetFirewallRule -PolicyStore PersistentStore -Name $item.Name "
-        + "-DisplayName $item.Name -Group 'JameFirewall.v1' -Program $item.Program "
-        + "-Direction $item.Direction -Action Block -Enabled True -Profile Any "
-        + "-Protocol Any -LocalAddress Any -RemoteAddress Any -InterfaceType Any "
-        + "-Service Any | Out-Null }"
-    )
+    setup_scripts = []
+    for batch_index, offset in enumerate(range(0, len(rules), 32)):
+        payload_path = tmp_path / f"inventory-load-rules-{batch_index}.json"
+        payload_path.write_text(
+            json.dumps(rules[offset : offset + 32], ensure_ascii=True), encoding="utf-8"
+        )
+        payload_literal = str(payload_path).replace("'", "''")
+        setup_scripts.append(
+            "$items = Get-Content -LiteralPath '"
+            + payload_literal
+            + "' -Raw | ConvertFrom-Json; foreach ($item in $items) { "
+            + "New-NetFirewallRule -PolicyStore PersistentStore -Name $item.Name "
+            + "-DisplayName $item.Name -Group 'JameFirewall.v1' -Program $item.Program "
+            + "-Direction $item.Direction -Action Block -Enabled True -Profile Any "
+            + "-Protocol Any -LocalAddress Any -RemoteAddress Any -InterfaceType Any "
+            + "-Service Any | Out-Null }"
+        )
     cleanup = (
-        "$prefix = '" + suffix + ":v1:'; "
-        "Get-NetFirewallRule -PolicyStore PersistentStore | Where-Object { "
-        "$_.Group -eq 'JameFirewall.v1' -and $_.Name.StartsWith($prefix, "
-        "[StringComparison]::Ordinal) } | Remove-NetFirewallRule"
+        "$pattern = '" + suffix + ":v1:*'; "
+        "Get-NetFirewallRule -PolicyStore PersistentStore -Name $pattern "
+        "-ErrorAction SilentlyContinue | Remove-NetFirewallRule"
     )
     process = psutil.Process()
     rss_before = process.memory_info().rss
     try:
-        result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", setup])
-        assert result.succeeded, result
+        for setup in setup_scripts:
+            result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", setup])
+            assert result.succeeded, result
 
         inventory = benchmark.pedantic(
             firewall.list_inventory,
@@ -243,10 +248,11 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
             rounds=1,
             warmup_rounds=0,
         )
-        by_name = {rule.name: rule for rule in inventory.rules}
-        assert len(by_name) == 128
-        assert all(rule.effective for rule in inventory.rules)
-        # Unique paths prove batched provider output remains associated with its rule.
+        fixture_rules = [rule for rule in inventory.rules if is_managed_rule(rule, suffix)]
+        by_name = {rule.name: rule for rule in fixture_rules}
+        assert len(by_name) == program_count * len(RuleDirection)
+        assert all(rule.effective for rule in fixture_rules)
+        # Unique paths prove provider output remains associated with its rule identity.
         for program in programs:
             for direction in RuleDirection:
                 rule = by_name[managed_rule_name(program, direction, suffix)]
@@ -256,10 +262,11 @@ def test_inventory_load_with_128_owned_rules_is_complete_and_effective(
         audit_seconds = time.monotonic() - audit_started
         result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cleanup])
         assert result.succeeded, result
-        assert not firewall.list_inventory([suffix]).rules
+        remaining = firewall.list_inventory([suffix]).rules
+        assert not any(is_managed_rule(rule, suffix) for rule in remaining)
         assert audit.execute([tmp_path]).status == SystemStatus.UNPROTECTED
 
-        record_testsuite_property("inventory_load_owned_rules", len(inventory.rules))
+        record_testsuite_property("inventory_load_owned_rules", len(fixture_rules))
         record_testsuite_property("inventory_load_audit_seconds", round(audit_seconds, 3))
         record_testsuite_property("inventory_load_benchmark_seconds", benchmark.stats.stats.mean)
         record_testsuite_property("inventory_load_rss_before_bytes", rss_before)

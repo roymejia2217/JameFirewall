@@ -88,16 +88,16 @@ Managed rules use a stable native identity for each normalized Windows program p
 and traffic direction, plus a dedicated `JameFirewall.v1` group. Repeating a block
 operation repairs incomplete or disabled managed rules. The result is checked
 against the observed firewall inventory after the operation.
-Inventory queries select the managed group, requested native identity prefixes and legacy
-name suffixes in the provider. They retain at most 2,048 candidate rules and consume at
-most 8,192 query rows, including overlaps between selectors. The scope accepts up to
-eight lowercase namespaces of at most 64 letters, digits or hyphens each. Duplicate or
-changing native identities, provider errors and exceeded limits produce an error rather
-than a truncated success. Activation checks the projected candidate count before creating
-rules. Rule selection is read-only; ownership still requires the exact identity, path,
-direction and application group. Legacy and foreign rules remain visible and retained.
-These limits bound results handled by the command, not the Windows provider's internal
-caches or work. Per-command and operation deadlines remain in force.
+Inventory queries select requested native identity prefixes and legacy display-name
+suffixes in the provider without imposing a fixed managed-rule count ceiling. The scope accepts up to eight
+lowercase namespaces of at most 64 letters, digits or hyphens each; managed ownership still
+requires the dedicated application group. Each required NetSecurity filter catalog is read once
+per policy store and joined to the selected rules by native `InstanceID`; provider output order
+is never treated as identity. Duplicate or changing rule identities, duplicate or missing filter
+identities, and provider failures make the whole inventory fail closed rather than returning a
+truncated or positionally matched result.
+Rule selection is read-only; ownership still requires the exact identity, path, direction and
+application group. Legacy and foreign rules remain visible and retained.
 
 The status describes configured blocking for executables discovered in the current
 search directories. Complete blocking requires both enabled block rules, all firewall
@@ -145,17 +145,20 @@ found paths, and has a cooperative 30-second deadline. Errors retain the draft.
 
 Operations run one at a time; activation, deactivation, refresh, and configuration
 remain unavailable until the current operation and its visual updates complete.
-Activation, deactivation and audit share a cooperative 120-second operation budget,
-including the audit following a mutation. Nested steps never reset that deadline.
-Each command has a maximum timeout of 30 seconds, shortened to the operation time
-remaining. Commands retain at most 8 MiB of combined raw stdout/stderr; overflow is
-an explicit failure, and partial output is never accepted as a valid firewall inventory.
-Firewall mutations run sequentially in batches of at most eight rules, with an 8,000-byte
-quoted JSON payload limit measured in UTF-16. Each batch reads the local inventory once
-and re-fetches existing native identities before validating their group, program and
-direction. A failed rule does not authorize touching a foreign rule. Known failures are
-checked against the final inventory; an incomplete command or malformed result aborts
-later batches and requires refreshing the actual state. Applied changes are not rolled back.
+The 120-second operation guard is a cooperative progress window, not a total runtime
+ceiling. A confirmed inventory or mutation batch renews that same window; an already
+expired operation cannot be revived. This lets larger rule sets take proportionally longer
+on slower Windows systems while still detecting a provider command that stops making
+progress. Firewall provider commands receive the remaining progress window explicitly
+instead of being capped by the process runner's 30-second standalone default. Commands
+retain at most 8 MiB of combined raw stdout/stderr; overflow is an explicit failure, and
+partial output is never accepted as a valid firewall inventory.
+Firewall mutations run sequentially in payload-bounded batches, with an 8,000-byte
+quoted JSON payload limit measured in UTF-16. Each batch re-fetches existing native
+identities before validating their group, program and direction. A failed rule does not
+authorize touching a foreign rule. Known failures are checked against the final inventory;
+an incomplete command or malformed result aborts later batches and requires refreshing
+the actual state. Applied changes are not rolled back.
 
 On Windows, a command starts suspended, is assigned to a private Job Object, and
 resumes only after containment succeeds. Only its standard I/O handles are inherited.

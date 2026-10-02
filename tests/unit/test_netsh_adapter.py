@@ -9,6 +9,7 @@ import pytest
 
 from jame_firewall.core.entities import FirewallRule, ProcessResult, ProcessStatus, RuleDirection
 from jame_firewall.core.exceptions import FirewallExecutionError
+from jame_firewall.core.execution import OPERATION_TIMEOUT_SECONDS, operation_budget
 from jame_firewall.core.rule_identity import MANAGED_GROUP, managed_rule_name
 from jame_firewall.infrastructure.firewall.netsh_adapter import WindowsNetshAdapter
 
@@ -81,6 +82,17 @@ def test_inventory_returns_authoritative_empty_set_without_fallback() -> None:
     adapter, runner = adapter_with_response(inventory_json())
     assert adapter.list_inventory(["jame-block"]).rules == ()
     runner.run.assert_called_once()
+
+
+def test_firewall_provider_timeout_uses_operation_window_instead_of_fixed_30_seconds() -> None:
+    adapter, runner = adapter_with_response(inventory_json())
+    adapter.list_inventory(["jame-block"])
+    assert runner.run.call_args.kwargs["timeout"] == OPERATION_TIMEOUT_SECONDS
+
+    runner.reset_mock()
+    with operation_budget(75.0, clock=lambda: 10.0):
+        adapter.list_inventory(["jame-block"])
+    assert runner.run.call_args.kwargs["timeout"] == pytest.approx(75.0)
 
 
 def test_inventory_preserves_disabled_policy_and_ineffective_rule_flags() -> None:

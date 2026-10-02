@@ -52,16 +52,19 @@ explicitly to `0.12.19`; CI does not resolve an unbounded latest uv release at r
    is diagnostic; command counts and observed policy are deterministic assertions.
    Scoped inventory contracts add 128 real unrelated rules and verify that owned rules,
    a case-insensitive legacy display suffix and a foreign native-name collision remain
-   distinguishable. An additional native inventory load case installs 128 real owned rules across
-   64 executable paths, verifies exact rule-to-program identity and effective policy through the
-   production inventory and audit paths, then removes the isolated fixture. It records refresh
-   duration and process working set. These cases preserve foreign/legacy rules on deactivation and
-   require an
-   authoritative empty inventory after fixture cleanup. Native PowerShell fault fixtures
-   reject candidate/row quotas, duplicate or changing identities, denied access and false
-   absence errors before expensive filter reads. JUnit properties record full catalog row
-   counts versus scoped candidate counts. Full-catalog enumeration and scoped verification
-   timings cover different work and are diagnostic, not a speed ratio or timing gate.
+   distinguishable. An additional native inventory load case installs 264 real owned rules across
+   132 executable paths, above the 262-rule workload observed on the field Windows workstation.
+   It verifies exact rule-to-program identity and effective policy through the production inventory
+   and audit paths, then removes the isolated fixture. The production reconciliation load case uses
+   the same 132 executable paths and exercises scan, activation, effective inventory, deactivation,
+   and final verification under the real progress lease. Both cases record elapsed time and the
+   inventory case records process working set. They preserve foreign/legacy rules on deactivation
+   and require an authoritative empty fixture inventory after cleanup. Native PowerShell fault fixtures
+   reject duplicate or changing identities, denied access and false absence errors before a result
+   can establish protection. Unit contracts verify that no fixed candidate/row ceiling is
+   reintroduced and that catalog filters are joined by native `InstanceID`, never by output order.
+   Full-catalog enumeration and scoped verification timings cover different work and remain
+   diagnostic rather than a hardware-specific speed gate.
 3. The same system lane installs 7-Zip 26.3.0 into `C:\Program Files\7-Zip`, verifies the
    installed product version, opens JameFirewall Settings, adds that directory through the real
    Add control, verifies Cancel discards edits, injects a replacement failure through the real
@@ -109,13 +112,17 @@ Windows Firewall mutation is real OS integration work. The system E2E therefore 
 observable UI completion rather than assuming an arbitrary short fixed delay. Completion predicates
 normalize Tcl/ttk values before comparison and require the shared dispatcher to settle.
 Firewall inventory and mutation work is scoped by native rule identity and request payload size;
-there is no product rule-count ceiling. The operation deadline, per-process timeout, and output cap
-remain resource safeguards. If one of those limits is reached, incomplete results cannot establish
-protection and the UI must refresh the observed firewall state before another attempt.
-The UI acceptance wait uses the production 120-second operation budget plus a 10-second
-cleanup/UI margin; it does not reset the product's deadline. Process commands are capped
-at 30 seconds and 8 MiB combined output; expired or incomplete results cannot prove success. A timeout remains fail-closed and reports the current
-application status, button states, and activity log; it is never converted to a skip or success.
+there is no product rule-count ceiling. Production uses a 120-second cooperative progress lease
+rather than a 120-second total-runtime cutoff. A fully validated inventory or mutation batch renews
+the existing lease; expired work cannot renew it. Firewall provider commands receive the remaining
+lease explicitly, so the process runner's 30-second standalone default is not an independent cap on
+NetSecurity work. The 8 MiB combined-output limit remains a hard resource bound. If a provider
+command stops making progress, exceeds output bounds, returns an incomplete schema, or loses native
+identity, the result cannot establish protection and later mutations stop.
+The pinned 7-Zip UI fixture retains its bounded acceptance wait because its workload is intentionally
+small. Large-rule native acceptance instead validates the real production lifecycle directly and may
+run beyond one 120-second window as confirmed batches renew the lease. Timing remains diagnostic;
+timeouts and incomplete results remain fail-closed and are never converted to skips or success.
 
 ## Release boundary
 
