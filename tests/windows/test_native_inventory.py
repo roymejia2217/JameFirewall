@@ -63,7 +63,7 @@ def test_scoped_inventory_with_unrelated_rules_and_legacy_collision(
         return result.stdout
 
     try:
-        # A real unrelated catalog must not consume the scoped candidate quota or enter the DTO.
+        # Unrelated catalog entries must not enter the scoped inventory DTO.
         native(
             f"1..128 | ForEach-Object {{ New-NetFirewallRule -Name ('{suffix}-unrelated-' + $_) -DisplayName ('Unrelated ' + $_) -Group '{fixture_group}' -Program '{escaped_path}' -Direction Outbound -Action Allow | Out-Null }}"
         )
@@ -116,14 +116,12 @@ def test_scoped_inventory_with_unrelated_rules_and_legacy_collision(
     assert firewall.list_inventory([suffix, "adobe-block"]).rules == ()
 
 
-@pytest.mark.parametrize(
-    "fault", ["candidate", "rows", "duplicate", "changed", "access", "fake-absence"]
-)
-def test_native_inventory_rejects_provider_limits_and_faults_before_filter_queries(
+@pytest.mark.parametrize("fault", ["duplicate", "changed", "access", "fake-absence"])
+def test_native_inventory_rejects_ambiguous_or_failed_provider_queries_before_filters(
     fault: str,
 ) -> None:
     # Real Windows PowerShell executes the inventory control flow with deterministic provider
-    # records; large quotas and error paths do not require thousands of OS mutations.
+    # records; provider failures do not require native OS mutations.
     runner = SystemProcessRunner()
     firewall = WindowsNetshAdapter(runner)
     if fault in {"access", "fake-absence"}:
@@ -131,9 +129,7 @@ def test_native_inventory_rejects_provider_limits_and_faults_before_filter_queri
         provider = f"$record = [System.Management.Automation.ErrorRecord]::new([Exception]::new('fixture failure'), 'FixtureFailure', [System.Management.Automation.ErrorCategory]::{category}, $null); throw $record"
     else:
         provider = "$script:calls++; "
-        if fault == "candidate":
-            provider += "1..3 | ForEach-Object { [PSCustomObject]@{ Name = ('rule' + $_) } }"
-        elif fault == "duplicate":
+        if fault == "duplicate":
             provider += "1..2 | ForEach-Object { [PSCustomObject]@{ Name = 'same' } }"
         elif fault == "changed":
             provider += "[PSCustomObject]@{ Name = 'same'; DisplayName = [string]$script:calls }"
@@ -144,19 +140,13 @@ def test_native_inventory_rejects_provider_limits_and_faults_before_filter_queri
         + provider
         + " }; function Get-NetFirewallApplicationFilter { throw 'EXPENSIVE_FILTER_WAS_REACHED' }; "
     )
-    cap = (
-        "$maxCandidates = 2; $maxRows = "
-        + ("1" if fault == "rows" else "100")
-        + "; $group = 'fixture'; $suffixes = @('jame'); "
-    )
+    scope = "$group = 'fixture'; $suffixes = @('jame'); "
     with pytest.raises(FirewallExecutionError) as exc:
-        code, _, stderr = firewall._run(mock + cap + _INVENTORY_SCRIPT)
+        code, _, stderr = firewall._run(mock + scope + _INVENTORY_SCRIPT)
         if code:
             raise FirewallExecutionError(stderr)
     assert "EXPENSIVE_FILTER_WAS_REACHED" not in str(exc.value)
     expected = {
-        "candidate": "candidate limit",
-        "rows": "row limit",
         "duplicate": "Ambiguous",
         "changed": "changed",
         "access": "fixture failure",
@@ -165,12 +155,21 @@ def test_native_inventory_rejects_provider_limits_and_faults_before_filter_queri
     assert expected[fault] in str(exc.value)
 
 
-def test_native_empty_group_uses_cim_property_identity() -> None:
+@pytest.mark.parametrize(
+    ("parameter", "value", "property"),
+    [
+        ("-Group", "absent-jame-group-", "RuleGroup"),
+        ("-Name", "absent-jame-name-", "InstanceID"),
+    ],
+)
+def test_native_empty_selector_uses_cim_property_identity(
+    parameter: str, value: str, property: str
+) -> None:
     runner = SystemProcessRunner()
-    group = "absent-jame-" + uuid.uuid4().hex
+    missing = value + uuid.uuid4().hex
     script = (
         "$ErrorActionPreference = 'Stop'; try { "
-        f"Get-NetFirewallRule -PolicyStore PersistentStore -Group '{group}' | Out-Null; "
+        f"Get-NetFirewallRule -PolicyStore PersistentStore {parameter} '{missing}' | Out-Null; "
         "throw 'Expected exact missing-group error' } catch { "
         "[PSCustomObject]@{ Id = $_.FullyQualifiedErrorId; "
         "Category = [string]$_.CategoryInfo.Category } | ConvertTo-Json -Compress }"
@@ -178,11 +177,12 @@ def test_native_empty_group_uses_cim_property_identity() -> None:
     result = runner.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
     assert result.succeeded, result
     assert json.loads(result.stdout) == {
-        "Id": "CmdletizationQuery_NotFound_RuleGroup,Get-NetFirewallRule",
+        "Id": f"CmdletizationQuery_NotFound_{property},Get-NetFirewallRule",
         "Category": "ObjectNotFound",
     }
-    # Production must accept absence and still retrieve all profiles, not hide other errors.
-    assert WindowsNetshAdapter(runner).list_inventory([group]).rules == ()
+    if parameter == "-Group":
+        # Production must accept absence and still retrieve all profiles, not hide other errors.
+        assert WindowsNetshAdapter(runner).list_inventory([missing]).rules == ()
 
 
 @pytest.mark.windows_load

@@ -1,6 +1,5 @@
-"""Bounded provider-scoped inventory script; no partial result proves protection."""
+"""Provider-scoped firewall inventory; no partial result proves protection."""
 
-MAX_QUERY_ROWS = 8192
 MAX_SUFFIXES = 8
 MAX_SUFFIX_LENGTH = 64
 
@@ -38,22 +37,18 @@ function Test-Unrestricted($rule, $application) {
         [string]$rule.PolicyAppId -eq ''
     )
 }
-# Only provider-filtered rows cross into this command. Every emitted row consumes budget,
-# including overlaps across selectors. Never return truncated inventories.
-$counts = @{ Rows = 0 }
+# Only provider-filtered rows cross into this command. Overlaps are identity-checked,
+# and provider errors or inconsistent snapshots fail the whole inventory.
 function Read-Candidates($store, $parameter, $pattern, $target) {
     $selector = @{}; $selector[$parameter] = $pattern
     $seen = @{}
     try {
         Get-NetFirewallRule -PolicyStore $store @selector -ErrorAction Stop | ForEach-Object {
             $r = $_
-            $counts.Rows++
-            if ($counts.Rows -gt $maxRows) { throw 'Inventory query row limit exceeded' }
             if (-not $r.Name -or $seen.ContainsKey($r.Name)) {
                 throw 'Ambiguous native rule identity'
             }
             $seen[$r.Name] = $true
-            if ($seen.Count -gt $maxCandidates) { throw 'Inventory candidate limit exceeded' }
             if ($target.ContainsKey($r.Name)) {
                 $prior = $target[$r.Name]
                 foreach ($field in @('Name', 'DisplayName', 'Group', 'Direction', 'Action',
@@ -62,7 +57,6 @@ function Read-Candidates($store, $parameter, $pattern, $target) {
                         [StringComparison]::Ordinal)) { throw 'Inventory changed during query' }
                 }
             } else {
-                if ($target.Count -ge $maxCandidates) { throw 'Inventory candidate limit exceeded' }
                 $target[$r.Name] = $r
             }
         }

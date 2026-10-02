@@ -29,14 +29,14 @@ def test_response_requires_explicit_complete_inventory(complete: object) -> None
         adapter.list_inventory(["jame-block"])
 
 
-def test_excessive_candidates_are_rejected_before_parsing_rules() -> None:
-    # Invalid row contents must not mask the cardinality rejection.
-    adapter, _ = adapter_with_response(inventory_json([None] * 2049))
-    with pytest.raises(FirewallExecutionError, match="límite"):
-        adapter.list_inventory(["jame-block"])
+def test_complete_inventory_has_no_fixed_rule_count_ceiling() -> None:
+    dto = rule_json()
+    rules: list[object] = [{**dto, "Name": f"{dto['Name']}-{index}"} for index in range(2050)]
+    adapter, _ = adapter_with_response(inventory_json(rules))
+    assert len(adapter.list_inventory(["jame-block"]).rules) == 2050
 
 
-def test_inventory_queries_scope_and_bounds_before_expensive_filter_reads() -> None:
+def test_inventory_queries_stay_scoped_and_fail_closed_before_expensive_filter_reads() -> None:
     adapter, runner = adapter_with_response(inventory_json())
     adapter.list_inventory(["jame-block", "adobe-block"])
     script: str = runner.run.call_args.args[0][-1]
@@ -44,8 +44,10 @@ def test_inventory_queries_scope_and_bounds_before_expensive_filter_reads() -> N
     assert "Read-Candidates 'PersistentStore' 'Name'" in script
     assert "Read-Candidates 'PersistentStore' 'DisplayName'" in script
     assert "Read-Candidates 'ActiveStore' 'Group' $group" in script
-    assert "$maxCandidates = 2048" in script
-    assert "$maxRows = 8192" in script
+    assert "$maxCandidates" not in script
+    assert "$maxRows" not in script
+    assert "candidate limit exceeded" not in script
+    assert "row limit exceeded" not in script
     assert "Get-NetFirewallRule -PolicyStore PersistentStore)" not in script
     assert "Get-NetFirewallRule -PolicyStore ActiveStore)" not in script
     assert script.index("Read-Candidates 'ActiveStore'") < script.index("$filter = @(")
@@ -55,29 +57,26 @@ def test_inventory_queries_scope_and_bounds_before_expensive_filter_reads() -> N
     assert "SilentlyContinue" not in script
 
 
-def test_activation_never_creates_more_rules_than_can_be_audited() -> None:
+def test_activation_submits_more_than_2048_rules_without_arbitrary_rejection() -> None:
     from pathlib import Path
     from unittest.mock import MagicMock
 
     from tests.fakes.fake_uac import FakeUACAdapter
-    from tests.unit.test_operation_budget import scanner_for
 
-    from jame_firewall.core.entities import FirewallInventory, FirewallRule, RuleDirection
+    from jame_firewall.core.entities import FirewallInventory, RuleDirection, ScanResult
+    from jame_firewall.core.rule_identity import managed_rule_name
     from jame_firewall.core.use_cases.block_executables import BlockExecutablesUseCase
 
-    path = Path("C:/New/helper.exe")
+    paths = [Path(f"C:/New/helper-{index}.exe") for index in range(1025)]
+    scanner = MagicMock()
+    scanner.find_executables.return_value = ScanResult(executables=tuple(paths))
     firewall = MagicMock()
-    firewall.list_inventory.return_value = FirewallInventory(
-        rules=tuple(
-            FirewallRule(f"legacy-{i}", Path(f"C:/Old/{i}.exe"), RuleDirection.OUT)
-            for i in range(2048)
-        )
-    )
-    with pytest.raises(FirewallExecutionError, match="no se crearon reglas"):
-        BlockExecutablesUseCase(firewall, scanner_for(path), FakeUACAdapter()).execute(
-            [path.parent]
-        )
-    firewall.add_rules.assert_not_called()
+    firewall.list_inventory.return_value = FirewallInventory(rules=())
+    firewall.add_rules.return_value = (True,) * (len(paths) * 2)
+    BlockExecutablesUseCase(firewall, scanner, FakeUACAdapter()).execute([Path("C:/New")])
+    submitted = firewall.add_rules.call_args.args[0]
+    assert len(submitted) == 2050
+    assert submitted[0].name == managed_rule_name(paths[0], RuleDirection.IN)
 
 
 def test_duplicate_native_identity_case_is_rejected() -> None:

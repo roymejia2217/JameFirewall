@@ -13,11 +13,10 @@ from jame_firewall.core.entities import (
 )
 from jame_firewall.core.exceptions import FirewallExecutionError
 from jame_firewall.core.execution import check_operation_budget
-from jame_firewall.core.ports import MAX_INVENTORY_RULES, ProcessRunnerPort
+from jame_firewall.core.ports import ProcessRunnerPort
 from jame_firewall.core.rule_identity import MANAGED_GROUP, is_managed_rule
 from jame_firewall.infrastructure.firewall._inventory import (
     _INVENTORY_SCRIPT,
-    MAX_QUERY_ROWS,
     MAX_SUFFIX_LENGTH,
     MAX_SUFFIXES,
 )
@@ -30,8 +29,17 @@ def _literal(value: str) -> str:
 
 # Revalidar el objeto local evita operar sobre una regla ajena con un nombre visible igual.
 _LOOKUP_SCRIPT = r"""
-$found = @(Get-NetFirewallRule -PolicyStore PersistentStore | Where-Object { $_.Name -eq $name })
+$found = @()
+try {
+    $found = @(Get-NetFirewallRule -PolicyStore PersistentStore -Name $name -ErrorAction Stop)
+} catch {
+    if ($_.CategoryInfo.Category -eq 'ObjectNotFound' -and
+        $_.FullyQualifiedErrorId -eq 'CmdletizationQuery_NotFound_InstanceID,Get-NetFirewallRule') {
+        $found = @()
+    } else { throw }
+}
 if ($found.Count -gt 1) { throw 'Ambiguous rule identity' }
+$owned = $true
 if ($found.Count -eq 1) {
     $r = $found[0]
     $filter = @(Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $r)
@@ -40,28 +48,22 @@ if ($found.Count -eq 1) {
     if ($r.Group -ne $group -or [string]$r.Direction -ne $direction -or
         -not [string]::Equals($actual.Replace('/', '\'), $program.Replace('/', '\'),
             [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Rule identity does not belong to this application'
+        $owned = $false
     }
 }
 """
 
 
-_BATCH_LIMIT = 8
 _PAYLOAD_LIMIT = 8000  # UTF-16 bytes after quoting; leaves room for script and runner prefix.
 _CREATE_SCRIPT = """
-if ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r | Out-Null }
-New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name `
-    -Group $group -Program $program -Direction $direction -Action Block `
-    -Enabled True -Profile Any -Protocol Any -LocalAddress Any -RemoteAddress Any `
-    -InterfaceType Any -Service Any | Out-Null
+if ($owned) {
+    if ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r | Out-Null }
+    New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name `
+        -Group $group -Program $program -Direction $direction -Action Block `
+        -Enabled True -Profile Any -Protocol Any -LocalAddress Any -RemoteAddress Any `
+        -InterfaceType Any -Service Any | Out-Null
+}
 """
-_BATCH_LOOKUP = _LOOKUP_SCRIPT.replace(
-    "$found = @(Get-NetFirewallRule -PolicyStore PersistentStore | Where-Object { $_.Name -eq $name })",
-    # Snapshot absence never authorizes removal. Re-fetch existing objects before validation.
-    "$found = @($local | Where-Object { $_.Name -eq $name })\n"
-    "if ($found.Count -gt 0) {\n"
-    "    $found = @(Get-NetFirewallRule -PolicyStore PersistentStore -Name $name)\n}",
-)
 
 
 class WindowsNetshAdapter:
@@ -104,6 +106,7 @@ class WindowsNetshAdapter:
             return False
         script = self._rule_variables(rule_name, program_path, direction) + _LOOKUP_SCRIPT
         script += """
+if (-not $owned) { exit 2 }
 if ($found.Count -eq 1) {
     Remove-NetFirewallRule -InputObject $r
 }
@@ -122,7 +125,9 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
             return False
         script = self._rule_variables(rule.name, rule.program_path, rule.direction)
         script += (
-            _LOOKUP_SCRIPT + "\nif ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r }"
+            _LOOKUP_SCRIPT
+            + "\nif (-not $owned) { exit 2 }\n"
+            + "if ($found.Count -eq 1) { Remove-NetFirewallRule -InputObject $r }"
         )
         code, _, _ = self._run(script)
         return code == 0
@@ -136,10 +141,8 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         return self._mutate_rules(rules, delete=True)
 
     def _mutate_rules(self, rules: list[FirewallRule], *, delete: bool) -> tuple[bool, ...]:
-        if (
-            len(rules) > MAX_INVENTORY_RULES
-            or len({r.name for r in rules}) != len(rules)
-            or any(not is_managed_rule(r, r.name.split(":v1:", 1)[0]) for r in rules)
+        if len({r.name for r in rules}) != len(rules) or any(
+            not is_managed_rule(r, r.name.split(":v1:", 1)[0]) for r in rules
         ):
             raise FirewallExecutionError("Identidades de lote inválidas o duplicadas")
         results: list[bool] = []
@@ -147,7 +150,7 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         for rule in rules:
             check_operation_budget()
             candidate = [*batch, rule]
-            if len(candidate) > _BATCH_LIMIT or self._payload_size(candidate) > _PAYLOAD_LIMIT:
+            if self._payload_size(candidate) > _PAYLOAD_LIMIT:
                 if batch:
                     results.extend(self._run_batch(batch, delete=delete))
                     batch = []
@@ -191,12 +194,13 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         script = (
             f"$group = {_literal(MANAGED_GROUP)};\n"
             f"$requests = ConvertFrom-Json {self._payload(rules)};\n"
-            "$local = @(Get-NetFirewallRule -PolicyStore PersistentStore);\n"
             "$results = @(foreach ($request in $requests) {\n"
             "$name = [string]$request.Name; $program = [string]$request.Program;\n"
             "$direction = [string]$request.Direction; $success = $false;\n"
-            "try {\n" + _BATCH_LOOKUP + action + "\n$success = $true\n"
-            "} catch { $success = $false }\n"
+            + _LOOKUP_SCRIPT
+            + "\nif ($owned) {\n"
+            + action
+            + "\n$success = $true\n}\n"
             "[PSCustomObject]@{ Name = $name; Succeeded = [bool]$success }\n"
             "});\n[PSCustomObject]@{ Results = @($results) } | ConvertTo-Json -Depth 3 -Compress"
         )
@@ -228,10 +232,7 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
             raise FirewallExecutionError("Ámbito de inventario inválido o demasiado amplio")
         check_operation_budget()
         literals = ", ".join(_literal(suffix) for suffix in dict.fromkeys(suffixes))
-        script = (
-            f"$group = {_literal(MANAGED_GROUP)}; $suffixes = @({literals});\n"
-            f"$maxCandidates = {MAX_INVENTORY_RULES}; $maxRows = {MAX_QUERY_ROWS};\n"
-        )
+        script = f"$group = {_literal(MANAGED_GROUP)}; $suffixes = @({literals});\n"
         code, stdout, stderr = self._run(script + _INVENTORY_SCRIPT)
         if code != 0:
             raise FirewallExecutionError(f"No se pudo consultar el firewall: {stderr}")
@@ -241,8 +242,6 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
                 raise ValueError("Invalid inventory schema")
             if not self._boolean(raw, "Complete"):
                 raise ValueError("Incomplete inventory")
-            if len(raw["Rules"]) > MAX_INVENTORY_RULES:
-                raise FirewallExecutionError("Inventario supera el límite de candidatos")
             enabled = self._boolean(raw, "ProfilesEnabled")
             allowed = self._boolean(raw, "LocalRulesAllowed")
             rules = tuple(self._parse_rule(item) for item in raw["Rules"])
