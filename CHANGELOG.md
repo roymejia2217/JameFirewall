@@ -11,6 +11,19 @@ Unreleased changes are recorded as Towncrier fragments in [`changelog.d/`](chang
 
 <!-- towncrier release notes start -->
 
+## [0.3.1](https://github.com/roymejia2217/JameFirewall/releases/tag/v0.3.1) - 2026-10-02
+
+### Fixed
+
+- Exercise scanner and native firewall inventory capacity profiles in Windows CI with real
+  workloads,
+  correctness assertions, and measured duration and process working-set data.
+  ([#35](https://github.com/roymejia2217/JameFirewall/issues/35))
+- Remove fixed firewall rule-count ceilings and reconcile mutations by exact rule identity in
+  payload-sized batches to reduce Windows Firewall operation time under larger workloads.
+  ([#39](https://github.com/roymejia2217/JameFirewall/issues/39))
+
+
 ## [0.3.0](https://github.com/roymejia2217/JameFirewall/releases/tag/v0.3.0) - 2026-10-01
 
 ### Changed
