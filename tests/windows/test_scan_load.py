@@ -63,7 +63,7 @@ def test_scanner_handles_real_ntfs_load_profiles(
     record_testsuite_property(f"scan_{profile}_entries", result.visited_entries)
     record_testsuite_property(f"scan_{profile}_executables", len(result.executables))
     record_testsuite_property(f"scan_{profile}_fixture_seconds", round(preparation_seconds, 3))
-    record_testsuite_property(f"scan_{profile}_benchmark_seconds", benchmark.stats.mean)
+    record_testsuite_property(f"scan_{profile}_benchmark_seconds", benchmark.stats.stats.mean)
     record_testsuite_property(f"scan_{profile}_rss_before_bytes", rss_before)
     record_testsuite_property(f"scan_{profile}_rss_after_bytes", rss_after)
 

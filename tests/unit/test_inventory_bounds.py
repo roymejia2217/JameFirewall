@@ -48,8 +48,7 @@ def test_inventory_queries_scope_and_bounds_before_expensive_filter_reads() -> N
     assert "$maxRows = 8192" in script
     assert "Get-NetFirewallRule -PolicyStore PersistentStore)" not in script
     assert "Get-NetFirewallRule -PolicyStore ActiveStore)" not in script
-    assert script.index("Read-Candidates 'ActiveStore'") < script.index("$localApplications = @(")
-    assert script.index("$localApplications = @(") < script.index("$activeApplications = @(")
+    assert script.index("Read-Candidates 'ActiveStore'") < script.index("$filter = @(")
     # Missing selectors are the sole empty-query exception; provider failures never fall back.
     assert "CmdletizationQuery_NotFound_" in script
     assert "ObjectNotFound" in script
