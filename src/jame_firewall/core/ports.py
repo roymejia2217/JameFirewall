@@ -21,9 +21,6 @@ class ProcessRunnerPort(Protocol):
         ...
 
 
-MAX_INVENTORY_RULES = 2048
-
-
 @runtime_checkable
 class FirewallPort(Protocol):
     """Abstracción de operaciones sobre el Firewall de Windows."""
@@ -49,7 +46,7 @@ class FirewallPort(Protocol):
         ...
 
     def list_inventory(self, suffixes: list[str]) -> FirewallInventory:
-        """Return a complete inventory of at most MAX_INVENTORY_RULES candidates; errors raise."""
+        """Return the complete scoped inventory; incomplete provider results raise."""
         ...
 
 

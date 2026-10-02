@@ -108,6 +108,10 @@ The packaged executable is validated separately as a black box with Pester. Ther
 Windows Firewall mutation is real OS integration work. The system E2E therefore waits for bounded
 observable UI completion rather than assuming an arbitrary short fixed delay. Completion predicates
 normalize Tcl/ttk values before comparison and require the shared dispatcher to settle.
+Firewall inventory and mutation work is scoped by native rule identity and request payload size;
+there is no product rule-count ceiling. The operation deadline, per-process timeout, and output cap
+remain resource safeguards. If one of those limits is reached, incomplete results cannot establish
+protection and the UI must refresh the observed firewall state before another attempt.
 The UI acceptance wait uses the production 120-second operation budget plus a 10-second
 cleanup/UI margin; it does not reset the product's deadline. Process commands are capped
 at 30 seconds and 8 MiB combined output; expired or incomplete results cannot prove success. A timeout remains fail-closed and reports the current

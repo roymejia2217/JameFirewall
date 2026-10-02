@@ -1,4 +1,4 @@
-"""Bounded provider batches retain identity and reject uncertain outcomes."""
+"""Payload-bounded provider batches retain identity and reject uncertain outcomes."""
 
 import json
 from pathlib import Path
@@ -43,15 +43,16 @@ def responding_runner() -> MagicMock:
 
 
 @pytest.mark.parametrize("method", ["add_rules", "delete_rules"])
-def test_many_rules_use_bounded_processes_and_one_inventory_per_batch(method: str) -> None:
-    rules = rules_for(19)
+def test_rule_count_is_not_capped_and_batches_follow_payload_size(method: str) -> None:
+    rules = rules_for(2050)
     runner = responding_runner()
     adapter = WindowsNetshAdapter(runner)
-    assert getattr(adapter, method)(rules) == (True,) * 19
-    assert runner.run.call_count == 3  # Eight rules maximum, then eight, then three.
+    assert getattr(adapter, method)(rules) == (True,) * len(rules)
+    assert runner.run.call_count > 1
     for call in runner.run.call_args_list:
         script = call.args[0][-1]
-        assert script.count("Get-NetFirewallRule -PolicyStore PersistentStore)") == 1
+        assert "Get-NetFirewallRule -PolicyStore PersistentStore -Name $name" in script
+        assert "Get-NetFirewallRule -PolicyStore PersistentStore);" not in script
         assert len(script.encode("utf-16-le")) <= 24000
 
 
@@ -185,3 +186,12 @@ def test_failed_provider_batch_aborts_following_mutations() -> None:
     with pytest.raises(FirewallExecutionError, match="incompleto"):
         WindowsNetshAdapter(runner).add_rules(rules_for(9))
     assert runner.run.call_count == 1
+
+
+def test_provider_failure_is_not_downgraded_to_a_per_rule_failure() -> None:
+    runner = responding_runner()
+    WindowsNetshAdapter(runner).add_rules(rules_for(1))
+    script = runner.run.call_args.args[0][-1]
+    assert "CmdletizationQuery_NotFound_InstanceID,Get-NetFirewallRule" in script
+    assert "CategoryInfo.Category" in script
+    assert "catch { $success = $false }" not in script

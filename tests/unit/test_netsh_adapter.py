@@ -198,7 +198,7 @@ def test_repair_recreates_verified_owned_rule_to_restore_unrestricted_scope() ->
     assert "Remove-NetFirewallRule -InputObject $r" in script
     assert "New-NetFirewallRule" in script
     assert "Set-NetFirewallRule" not in script
-    assert script.index("Rule identity does not belong") < script.index("Remove-NetFirewallRule")
+    assert script.index("if (-not $owned) { exit 2 }") < script.index("Remove-NetFirewallRule")
 
 
 def test_add_refuses_noncanonical_name_without_invoking_provider() -> None:
