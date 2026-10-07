@@ -11,6 +11,14 @@ Unreleased changes are recorded as Towncrier fragments in [`changelog.d/`](chang
 
 <!-- towncrier release notes start -->
 
+## [0.3.2](https://github.com/roymejia2217/JameFirewall/releases/tag/v0.3.2) - 2026-10-07
+
+### Fixed
+
+- Large firewall rule sets no longer fail solely because valid NetSecurity work exceeds a fixed
+  total runtime window; verified progress can continue while incomplete results still fail closed.
+
+
 ## [0.3.1](https://github.com/roymejia2217/JameFirewall/releases/tag/v0.3.1) - 2026-10-02
 
 ### Fixed
