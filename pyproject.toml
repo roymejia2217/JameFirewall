@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jame-firewall"
-version = "0.3.1"
+version = "0.3.2"
 description = "Windows desktop application for managing application-specific Windows Defender Firewall rules."
 readme = "README.md"
 requires-python = ">=3.11"
