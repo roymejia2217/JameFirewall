@@ -11,6 +11,15 @@ Unreleased changes are recorded as Towncrier fragments in [`changelog.d/`](chang
 
 <!-- towncrier release notes start -->
 
+## [0.3.3](https://github.com/roymejia2217/JameFirewall/releases/tag/v0.3.3) - 2026-10-07
+
+### Changed
+
+- Reduce repeated Windows NetSecurity lookups by indexing rule and application-filter identities
+  once per mutation batch while retaining exact ownership and policy verification.
+  ([#45](https://github.com/roymejia2217/JameFirewall/issues/45))
+
+
 ## [0.3.2](https://github.com/roymejia2217/JameFirewall/releases/tag/v0.3.2) - 2026-10-07
 
 ### Fixed
