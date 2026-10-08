@@ -59,6 +59,59 @@ if ($found.Count -eq 1) {
 """
 
 
+_BATCH_LOOKUP_SCRIPT = r"""
+# Read each native catalog once per bounded batch, then revalidate exact ownership.
+# Both catalog queries are fail-closed: missing/duplicate filter identities abort the batch.
+$requestedNames = [Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::OrdinalIgnoreCase)
+foreach ($request in $requests) {
+    if (-not $requestedNames.Add([string]$request.Name)) {
+        throw 'Duplicate batch rule identity'
+    }
+}
+$foundByName = @{}
+Get-NetFirewallRule -PolicyStore PersistentStore -All -ErrorAction Stop | ForEach-Object {
+    $key = [string]$_.Name
+    if ($requestedNames.Contains($key)) {
+        if ($foundByName.ContainsKey($key)) { throw 'Ambiguous rule identity' }
+        $foundByName[$key] = $_
+    }
+}
+$filtersByName = @{}
+if ($foundByName.Count -gt 0) {
+    Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -All -ErrorAction Stop |
+        ForEach-Object {
+            $key = [string]$_.InstanceID
+            if ($foundByName.ContainsKey($key)) {
+                if ($filtersByName.ContainsKey($key)) { throw 'Ambiguous application filter' }
+                $filtersByName[$key] = $_
+            }
+        }
+    if ($filtersByName.Count -ne $foundByName.Count) {
+        throw 'Incomplete application filter catalog'
+    }
+}
+"""
+
+_BATCH_VALIDATE_SCRIPT = r"""
+$owned = $true
+$found = @()
+if ($foundByName.ContainsKey($name)) {
+    $r = $foundByName[$name]
+    $found = @($r)
+    if (-not $filtersByName.ContainsKey($name)) {
+        throw 'Incomplete application filter'
+    }
+    $filter = $filtersByName[$name]
+    $actual = [Environment]::ExpandEnvironmentVariables([string]$filter.Program)
+    if ($r.Group -ne $group -or [string]$r.Direction -ne $direction -or
+        -not [string]::Equals($actual.Replace('/', '\'), $program.Replace('/', '\'),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        $owned = $false
+    }
+}
+"""
+
 _PAYLOAD_LIMIT = 8000  # UTF-16 bytes after quoting; leaves room for script and runner prefix.
 _CREATE_SCRIPT = """
 if ($owned) {
@@ -206,10 +259,11 @@ New-NetFirewallRule -PolicyStore PersistentStore -Name $name -DisplayName $name 
         script = (
             f"$group = {_literal(MANAGED_GROUP)};\n"
             f"$requests = ConvertFrom-Json {self._payload(rules)};\n"
-            "$results = @(foreach ($request in $requests) {\n"
+            + _BATCH_LOOKUP_SCRIPT
+            + "$results = @(foreach ($request in $requests) {\n"
             "$name = [string]$request.Name; $program = [string]$request.Program;\n"
             "$direction = [string]$request.Direction; $success = $false;\n"
-            + _LOOKUP_SCRIPT
+            + _BATCH_VALIDATE_SCRIPT
             + "\nif ($owned) {\n"
             + action
             + "\n$success = $true\n}\n"

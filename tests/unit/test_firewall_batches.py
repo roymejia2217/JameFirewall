@@ -51,8 +51,9 @@ def test_rule_count_is_not_capped_and_batches_follow_payload_size(method: str) -
     assert runner.run.call_count > 1
     for call in runner.run.call_args_list:
         script = call.args[0][-1]
-        assert "Get-NetFirewallRule -PolicyStore PersistentStore -Name $name" in script
-        assert "Get-NetFirewallRule -PolicyStore PersistentStore);" not in script
+        assert "Get-NetFirewallRule -PolicyStore PersistentStore -All" in script
+        assert "Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -All" in script
+        assert "Get-NetFirewallRule -PolicyStore PersistentStore -Name $name" not in script
         assert len(script.encode("utf-16-le")) <= 24000
 
 
@@ -210,6 +211,24 @@ def test_provider_failure_is_not_downgraded_to_a_per_rule_failure() -> None:
     runner = responding_runner()
     WindowsNetshAdapter(runner).add_rules(rules_for(1))
     script = runner.run.call_args.args[0][-1]
-    assert "CmdletizationQuery_NotFound_InstanceID,Get-NetFirewallRule" in script
-    assert "CategoryInfo.Category" in script
+    assert "Get-NetFirewallRule -PolicyStore PersistentStore -All -ErrorAction Stop" in script
+    assert (
+        "Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -All -ErrorAction Stop"
+        in script
+    )
+    assert "Incomplete application filter catalog" in script
     assert "catch { $success = $false }" not in script
+
+
+@pytest.mark.parametrize("method", ["add_rules", "delete_rules"])
+def test_batch_uses_indexed_provider_snapshot_instead_of_per_identity_queries(method: str) -> None:
+    runner = responding_runner()
+    result = getattr(WindowsNetshAdapter(runner), method)(rules_for(8))
+    assert result == (True,) * 8
+    for call in runner.run.call_args_list:
+        script = call.args[0][-1]
+        assert "Get-NetFirewallRule -PolicyStore PersistentStore -All" in script
+        assert "Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -All" in script
+        assert "Get-NetFirewallRule -PolicyStore PersistentStore -Name $name" not in script
+        assert "$foundByName.ContainsKey($name)" in script
+        assert "$filtersByName.ContainsKey($name)" in script
