@@ -181,3 +181,27 @@ Security
 
 Do not hand-edit generated release sections to change their style. Correct the originating
 Towncrier fragments or configuration and regenerate the release entry instead.
+
+## Engineering issue descriptions
+
+New engineering issues use GitHub's native Issue Form at
+`.github/ISSUE_TEMPLATE/engineering.yml`. Required fields cover category,
+problem, reproduction or evidence, expected behavior, acceptance criteria,
+verification, and risks/rollback. The native form refuses empty required
+fields when a contributor submits through the web interface.
+
+For issue bodies submitted through the API, reopened, or edited, the dedicated
+`Issue Body Lint` workflow uses immutable, SHA-pinned
+`issue-ops/parser` and `issue-ops/validator` actions to check the generated
+Markdown against the declared form schema, then fails the workflow for
+missing, empty, or structurally invalid inputs. A malformed issue is **not**
+silently rewritten, closed, or assigned. Empty sections and unsupported
+dropdown choices are rejected; substantive accuracy and engineering quality
+still require human or agent review.
+
+Existing issues were created before the new schema and are not retroactively
+rewritten. Editing or reopening them re-runs the validator; maintainers must
+migrate their body to the form structure when appropriate. GitHub API calls
+can bypass the web form at submission, but they cannot bypass this separate
+event-driven validation. Validation runs on trusted default-branch workflows,
+with no shell interpretation of user-provided Markdown.
