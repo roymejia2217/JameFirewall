@@ -1,0 +1,60 @@
+name: Engineering issue
+description: Report a reproducible defect, performance issue, or scoped engineering change.
+title: "[Engineering] "
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Work category
+      description: Select the closest engineering category.
+      options:
+        - Bug
+        - Performance
+        - Feature
+        - Security
+        - Maintenance
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: State the observable problem and its impact.
+      placeholder: Describe what fails, for whom, and under which conditions.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reproduction steps or evidence
+      description: Include exact commands, versions, logs, measurements, or a verifiable reference.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe the externally verifiable target state.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define observable success and failure boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: Identify test type, environment, and evidence required.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and rollback
+      description: Describe affected security boundaries, possible regressions, and rollback; use None with rationale if inapplicable.
+    validations:
+      required: true
