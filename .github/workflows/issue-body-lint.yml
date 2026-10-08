@@ -1,0 +1,49 @@
+name: Issue Body Lint
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-body-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  issue-body:
+    name: Issue Body Structure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Parse structured issue body
+        id: parse
+        uses: issue-ops/parser@930076fec73a78e949bdc58dc81595f45d4736a7 # v4.0.0
+        with:
+          body: ${{ github.event.issue.body }}
+          issue-form-template: engineering.yml
+          workspace: ${{ github.workspace }}
+
+      - name: Validate issue form response
+        id: validate
+        uses: issue-ops/validator@3aec708c72ec4cb8dfca562d4addad3e78e55e26 # v4.0.0
+        with:
+          issue-form-template: engineering.yml
+          parsed-issue-body: ${{ steps.parse.outputs.json }}
+          workspace: ${{ github.workspace }}
+          add-comment: 'false'
+      - name: Fail on missing or invalid issue fields
+        env:
+          VALIDATION_RESULT: ${{ steps.validate.outputs.result }}
+        shell: bash
+        run: |
+          if [ "$VALIDATION_RESULT" != "success" ]; then
+            echo "Issue body does not satisfy the Engineering issue form." >&2
+            exit 1
+          fi
